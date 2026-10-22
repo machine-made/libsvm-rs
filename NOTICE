@@ -1,0 +1,53 @@
+libsvm-rs
+
+Copyright (c) 2026 Ricardo A S Frantz
+Contact: rasfrantz@gmail.com
+Project home: https://github.com/ricardofrantz/libsvm-rs
+
+------------------------------------------------------------------------
+Provenance
+------------------------------------------------------------------------
+
+libsvm-rs is a Rust port and reimplementation of LIBSVM, a library for
+support vector machines originally created and maintained by:
+
+    Chih-Chung Chang and Chih-Jen Lin
+    Department of Computer Science, National Taiwan University
+    https://www.csie.ntu.edu.tw/~cjlin/libsvm
+
+The Rust implementation targets numerical equivalence and file-format
+compatibility with upstream LIBSVM; it is not a bitwise-identical copy.
+
+The SVM algorithms, file formats, and reference behavior derive from
+LIBSVM, which is distributed under the BSD 3-Clause License. The original
+copyright of Chih-Chung Chang and Chih-Jen Lin is retained and is not
+superseded by the Rust port's copyright.
+
+------------------------------------------------------------------------
+Vendored upstream
+------------------------------------------------------------------------
+
+This repository redistributes the original LIBSVM source verbatim under
+vendor/libsvm/ for differential testing and reference purposes:
+
+    Upstream: https://github.com/cjlin1/libsvm
+    Version:  v337 (LIBSVM_VERSION 337)
+    Commit:   6b907139084abf2da4d6d3cb10dc3b7eaffa2fbb (tag v337)
+
+The upstream BSD 3-Clause license text is retained verbatim at
+vendor/libsvm/COPYRIGHT.
+
+------------------------------------------------------------------------
+Datasets
+------------------------------------------------------------------------
+
+Sample datasets under data/ and vendor/libsvm/ (heart_scale, iris.scale,
+housing_scale and derivatives) are distributed with or scaled from the
+LIBSVM datasets collection
+(https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/) and originate
+from public-domain / UCI Machine Learning Repository sources.
+
+------------------------------------------------------------------------
+
+Modifications and derivative works must preserve the applicable copyright,
+license, and notice text as required by the BSD 3-Clause License.

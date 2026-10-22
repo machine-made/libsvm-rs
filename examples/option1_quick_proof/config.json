@@ -1,0 +1,30 @@
+{
+  "option_id": "option1",
+  "title": "Option 1: Quick Proof (Fast)",
+  "datasets": [
+    "ijcnn1"
+  ],
+  "kernels": [
+    0,
+    2
+  ],
+  "c_values": [
+    0.1,
+    1.0,
+    10.0
+  ],
+  "warmup": 3,
+  "runs": 15,
+  "train_sizes": {
+    "ijcnn1": [
+      2000,
+      5000,
+      10000,
+      20000,
+      49990
+    ]
+  },
+  "test_rows": {
+    "ijcnn1": 25000
+  }
+}

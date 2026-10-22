@@ -1,0 +1,6 @@
+svm_type c_svc
+kernel_type linear
+nr_class 3
+total_sv 3
+rho 0
+SV

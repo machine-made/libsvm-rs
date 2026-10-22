@@ -1,0 +1,43 @@
+[package]
+name = "libsvm-rs"
+description = "FFI-free Rust implementation of LIBSVM-compatible SVM training and prediction"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "../../README.md"
+homepage = "https://github.com/ricardofrantz/libsvm-rs"
+documentation = "https://docs.rs/libsvm-rs"
+keywords = ["svm", "machine-learning", "classification", "regression", "libsvm"]
+categories = ["science", "algorithms"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+thiserror = { workspace = true }
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+default = []
+# Enable serde Serialize/Deserialize for model and parameter types. Serialized enums use LIBSVM integer codes.
+serde = ["dep:serde"]
+# Opt-in parallel cross-validation folds; default builds keep the zero-rayon dependency tree.
+rayon = ["dep:rayon"]
+
+[dependencies.rayon]
+version = "1"
+optional = true
+
+[dev-dependencies]
+float-cmp = { workspace = true }
+criterion = { version = "0.8", features = ["html_reports"] }
+proptest = { workspace = true }
+serde_json = "1"
+
+[[bench]]
+name = "svm_bench"
+harness = false

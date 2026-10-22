@@ -1,0 +1,26 @@
+{
+  "generated_utc": "2026-02-11T19:42:00Z",
+  "raw_dir": "/Users/rfrantz/Documents/projects/libsvm-rs/examples/data/raw",
+  "datasets": {
+    "ijcnn1": {
+      "title": "IJCNN 2001 (binary classification)",
+      "task": "classification",
+      "files": [
+        {
+          "url": "https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/ijcnn1.bz2",
+          "file": "examples/data/raw/ijcnn1.bz2",
+          "size_bytes": 1398220,
+          "sha256": "450dee8470b168e47b9fae1fc160396b8a809c675737837fce3acd51dcdc0481"
+        },
+        {
+          "url": "https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/ijcnn1.t.bz2",
+          "file": "examples/data/raw/ijcnn1.t.bz2",
+          "size_bytes": 2597597,
+          "sha256": "acd1db430684fdd3f0c768ecc49aa8e749d0004fc117611220c2aa576a7b6a24"
+        }
+      ],
+      "expected_train_rows": 49990,
+      "expected_test_rows": 91701
+    }
+  }
+}

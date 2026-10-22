@@ -1,0 +1,53 @@
+{
+  "option_id": "option4",
+  "title": "Option 4: Sparse High-Dimensional Stress Demo",
+  "datasets": [
+    "ijcnn1",
+    "covtype_scale",
+    "yearpredictionmsd",
+    "rcv1_binary"
+  ],
+  "kernels": [
+    0,
+    2
+  ],
+  "c_values": [
+    0.1,
+    1.0,
+    10.0
+  ],
+  "warmup": 3,
+  "runs": 10,
+  "train_sizes": {
+    "ijcnn1": [
+      5000,
+      10000,
+      20000,
+      49990
+    ],
+    "covtype_scale": [
+      50000,
+      100000,
+      200000,
+      400000
+    ],
+    "yearpredictionmsd": [
+      50000,
+      100000,
+      200000,
+      400000
+    ],
+    "rcv1_binary": [
+      2000,
+      5000,
+      10000,
+      20000
+    ]
+  },
+  "test_rows": {
+    "ijcnn1": 50000,
+    "covtype_scale": 50000,
+    "yearpredictionmsd": 50000,
+    "rcv1_binary": 120000
+  }
+}

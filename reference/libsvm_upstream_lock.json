@@ -1,0 +1,9 @@
+{
+  "project": "libsvm",
+  "upstream_url": "https://github.com/cjlin1/libsvm.git",
+  "upstream_tag": "v337",
+  "upstream_tag_object": "fe58ce0dc92949128a6ac0a3a827b45efabbf943",
+  "upstream_commit": "6b907139084abf2da4d6d3cb10dc3b7eaffa2fbb",
+  "libsvm_version": 337,
+  "release_date": "2025-12-29"
+}

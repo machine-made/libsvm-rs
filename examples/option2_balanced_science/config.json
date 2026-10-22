@@ -1,0 +1,48 @@
+{
+  "option_id": "option2",
+  "title": "Option 2: Balanced Scientific Demo",
+  "datasets": [
+    "ijcnn1",
+    "covtype_scale",
+    "yearpredictionmsd"
+  ],
+  "kernels": [
+    0,
+    2
+  ],
+  "c_values": [
+    0.1,
+    1.0,
+    10.0
+  ],
+  "warmup": 3,
+  "runs": 10,
+  "train_sizes": {
+    "ijcnn1": [
+      5000,
+      10000,
+      20000,
+      40000,
+      49990
+    ],
+    "covtype_scale": [
+      20000,
+      50000,
+      100000,
+      200000,
+      400000
+    ],
+    "yearpredictionmsd": [
+      20000,
+      50000,
+      100000,
+      200000,
+      400000
+    ]
+  },
+  "test_rows": {
+    "ijcnn1": 50000,
+    "covtype_scale": 50000,
+    "yearpredictionmsd": 50000
+  }
+}

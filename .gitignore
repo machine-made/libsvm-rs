@@ -1,0 +1,41 @@
+# Rust
+/target/
+crates/libsvm/fuzz/target/
+crates/libsvm/fuzz/artifacts/
+
+# Temporary files
+.tmp/
+
+# Python
+__pycache__/
+*.pyc
+
+# C compiled artifacts in vendor
+vendor/libsvm/*.o
+vendor/libsvm/svm-train
+vendor/libsvm/svm-predict
+vendor/libsvm/svm-scale
+
+# Example build/cache/data artifacts
+examples/**/target/
+examples/**/__pycache__/
+examples/**/output/tmp/
+examples/option*/output/
+examples/data/raw/
+examples/data/processed/
+examples/data/subsets/
+examples/integrations/wasm_inference/pkg/
+examples/integrations/wasm_inference/wasm_module/target/
+examples/integrations/wasm_inference/output/*
+!examples/integrations/wasm_inference/output/results.json
+!examples/integrations/wasm_inference/output/report.md
+!examples/integrations/wasm_inference/output/wasm_vs_cpp.png
+
+# Beads (local-only planning, per user decision 2026-06-10)
+/.beads/
+
+# bv (beads viewer) local config and caches
+.bv/
+
+# supervisor-coder dispatch artifacts
+/.sc/

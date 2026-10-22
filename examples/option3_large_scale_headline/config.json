@@ -1,0 +1,49 @@
+{
+  "option_id": "option3",
+  "title": "Option 3: Large-Scale Headline Demo",
+  "datasets": [
+    "ijcnn1",
+    "covtype_scale",
+    "yearpredictionmsd",
+    "higgs"
+  ],
+  "kernels": [
+    0,
+    2
+  ],
+  "c_values": [
+    0.1,
+    1.0
+  ],
+  "warmup": 2,
+  "runs": 6,
+  "train_sizes": {
+    "ijcnn1": [
+      10000,
+      30000,
+      49990
+    ],
+    "covtype_scale": [
+      50000,
+      150000,
+      300000
+    ],
+    "yearpredictionmsd": [
+      50000,
+      150000,
+      300000
+    ],
+    "higgs": [
+      20000,
+      50000,
+      100000,
+      200000
+    ]
+  },
+  "test_rows": {
+    "ijcnn1": 50000,
+    "covtype_scale": 80000,
+    "yearpredictionmsd": 50000,
+    "higgs": 100000
+  }
+}
