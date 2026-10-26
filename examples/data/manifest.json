@@ -1,6 +1,6 @@
 {
   "generated_utc": "2026-02-11T19:42:00Z",
-  "raw_dir": "/Users/rfrantz/Documents/projects/libsvm-rs/examples/data/raw",
+  "raw_dir": "examples/data/raw",
   "datasets": {
     "ijcnn1": {
       "title": "IJCNN 2001 (binary classification)",

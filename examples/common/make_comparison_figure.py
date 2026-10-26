@@ -21,13 +21,13 @@ def discover_result_files(root: Path) -> List[Path]:
     return sorted(set(out))
 
 
-def load_example_cases(result_files: List[Path]) -> List[Dict[str, object]]:
+def load_example_cases(root: Path, result_files: List[Path]) -> List[Dict[str, object]]:
     out: List[Dict[str, object]] = []
     for p in result_files:
         payload = json.loads(p.read_text(encoding="utf-8"))
         for row in payload.get("results", []):
             item = dict(row)
-            item["source_file"] = str(p)
+            item["source_file"] = p.relative_to(root).as_posix()
             out.append(item)
     return out
 
@@ -56,7 +56,7 @@ def load_reference_benchmark_cases(root: Path) -> List[Dict[str, object]]:
                     "train": ops["train"],
                     "predict": ops["predict"],
                 },
-                "source_file": str(ref),
+                "source_file": ref.relative_to(root).as_posix(),
             }
         )
     return out
@@ -359,7 +359,7 @@ def main() -> None:
     result_files = discover_result_files(root)
     rows: List[Dict[str, object]] = []
     if result_files:
-        rows.extend(load_example_cases(result_files))
+        rows.extend(load_example_cases(root, result_files))
     rows.extend(load_reference_benchmark_cases(root))
     if not rows:
         raise RuntimeError(

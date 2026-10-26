@@ -311,14 +311,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Parameter validation with ν-SVC feasibility check
 - 38 tests
 
-[0.9.1]: https://github.com/ricardofrantz/libsvm-rs/compare/v0.9.0...v0.9.1
-[0.9.0]: https://github.com/ricardofrantz/libsvm-rs/compare/v0.8.1...v0.9.0
-[0.8.1]: https://github.com/ricardofrantz/libsvm-rs/compare/v0.8.0...v0.8.1
-[0.8.0]: https://github.com/ricardofrantz/libsvm-rs/compare/v0.7.0...v0.8.0
-[0.7.0]: https://github.com/ricardofrantz/libsvm-rs/compare/v0.6.0...v0.7.0
-[0.6.0]: https://github.com/ricardofrantz/libsvm-rs/compare/v0.5.1...v0.6.0
-[0.5.1]: https://github.com/ricardofrantz/libsvm-rs/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/ricardofrantz/libsvm-rs/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/ricardofrantz/libsvm-rs/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/ricardofrantz/libsvm-rs/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/ricardofrantz/libsvm-rs/commits/v0.2.0
+[0.9.1]: https://github.com/machine-made/libsvm-rs/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/machine-made/libsvm-rs/compare/v0.8.1...v0.9.0
+[0.8.1]: https://github.com/machine-made/libsvm-rs/compare/v0.8.0...v0.8.1
+[0.8.0]: https://github.com/machine-made/libsvm-rs/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/machine-made/libsvm-rs/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/machine-made/libsvm-rs/compare/v0.5.1...v0.6.0
+[0.5.1]: https://github.com/machine-made/libsvm-rs/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/machine-made/libsvm-rs/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/machine-made/libsvm-rs/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/machine-made/libsvm-rs/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/machine-made/libsvm-rs/commits/v0.2.0

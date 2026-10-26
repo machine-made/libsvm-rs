@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/libsvm-rs.svg)](https://crates.io/crates/libsvm-rs)
 [![Documentation](https://docs.rs/libsvm-rs/badge.svg)](https://docs.rs/libsvm-rs)
-[![CI](https://github.com/ricardofrantz/libsvm-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/ricardofrantz/libsvm-rs/actions)
+[![CI](https://github.com/machine-made/libsvm-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/machine-made/libsvm-rs/actions)
 [![MSRV](https://img.shields.io/badge/MSRV-1.80-blue.svg)](Cargo.toml)
 [![License](https://img.shields.io/badge/license-BSD--3-blue.svg)](LICENSE)
 
@@ -177,7 +177,7 @@ MSRV is Rust `1.80` for all builds.
 
 ```bash
 # Clone and build from source (CLIs are workspace members, not published separately)
-git clone https://github.com/ricardofrantz/libsvm-rs.git
+git clone https://github.com/machine-made/libsvm-rs.git
 cd libsvm-rs
 cargo build --release -p svm-train-rs -p svm-predict-rs -p svm-scale-rs
 # Binaries are in target/release/

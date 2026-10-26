@@ -5,7 +5,7 @@
 //! cross-validation, and LIBSVM text model/problem I/O without an FFI boundary.
 //! The public API mirrors the original LIBSVM concepts while using owned Rust
 //! data and `Result`-based error handling; see the
-//! [migration guide](https://github.com/ricardofrantz/libsvm-rs/blob/main/docs/MIGRATION.md)
+//! [migration guide](https://github.com/machine-made/libsvm-rs/blob/main/docs/MIGRATION.md)
 //! for a C-to-Rust mapping.
 //!
 //! ## LIBSVM parity
@@ -51,7 +51,7 @@
 //! ν-SVR). See [`train::svm_train`] for training, [`predict::predict`]
 //! for inference, and [`predict::predict_probability`] for probabilistic
 //! outputs. The project repository is
-//! <https://github.com/ricardofrantz/libsvm-rs>.
+//! <https://github.com/machine-made/libsvm-rs>.
 //!
 //! ## Trust Boundary
 //!

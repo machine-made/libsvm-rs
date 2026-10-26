@@ -99,7 +99,8 @@ python3 - \
     "${RELEASE_DATE}" \
     "${CC_VERSION}" \
     "${SRC_DIR}/svm-train" \
-    "${SRC_DIR}/svm-predict" <<'PY'
+    "${SRC_DIR}/svm-predict" \
+    "${PROJ_ROOT}" <<'PY'
 import hashlib
 import json
 import sys
@@ -116,6 +117,16 @@ release_date = sys.argv[7]
 cc_version = sys.argv[8]
 train_bin = Path(sys.argv[9])
 predict_bin = Path(sys.argv[10])
+proj_root = Path(sys.argv[11])
+
+
+def repo_relative(path: Path) -> str:
+    # Keep committed provenance free of local paths.
+    try:
+        return path.resolve().relative_to(proj_root.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
 
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
@@ -138,21 +149,22 @@ payload = {
         "cc_version": cc_version,
         "svm_train_sha256": sha256(train_bin),
         "svm_predict_sha256": sha256(predict_bin),
-        "svm_train_path": str(train_bin),
-        "svm_predict_path": str(predict_bin),
+        "svm_train_path": repo_relative(train_bin),
+        "svm_predict_path": repo_relative(predict_bin),
     },
 }
 
 out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 PY
 
-python3 - "${PROVENANCE_FILE}" "${REPORT_FILE}" <<'PY'
+python3 - "${PROVENANCE_FILE}" "${REPORT_FILE}" "${PROJ_ROOT}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 provenance_path = Path(sys.argv[1])
 report_path = Path(sys.argv[2])
+proj_root = Path(sys.argv[3])
 data = json.loads(provenance_path.read_text())
 
 up = data["upstream"]
@@ -182,7 +194,7 @@ lines = [
     "",
     "## Artifacts",
     "",
-    f"- Provenance JSON: `{provenance_path.as_posix()}`",
+    f"- Provenance JSON: `{provenance_path.resolve().relative_to(proj_root.resolve()).as_posix()}`",
 ]
 
 report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -1,7 +1,7 @@
 BSD 3-Clause License
 
 Copyright (c) 2000-2023 Chih-Chung Chang and Chih-Jen Lin (original LIBSVM)
-Copyright (c) 2026 Ricardo A S Frantz (Rust port: libsvm-rs)
+Copyright (c) 2026 Ricardo Frantz (Rust port: libsvm-rs)
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
