@@ -14,6 +14,23 @@ from typing import Dict, List
 import matplotlib.pyplot as plt
 
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def repo_relative(path: Path) -> str:
+    """Return `path` relative to the repo root, so committed results hold no local paths.
+
+    Exit with an error when `path` is outside the repo. Call it before any write.
+    """
+    try:
+        return path.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        raise SystemExit(
+            f"error: {path} is outside the repository ({REPO_ROOT}). "
+            "Pass a test file inside the repository, so results hold no local paths."
+        ) from None
+
+
 def percentile(sorted_vals: List[float], p: float) -> float:
     if not sorted_vals:
         return float("nan")
@@ -150,6 +167,7 @@ def main() -> None:
     args = parser.parse_args()
 
     test_file = Path(args.test).resolve()
+    test_file_rel = repo_relative(test_file)
     out_dir = Path(args.out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -211,7 +229,7 @@ def main() -> None:
                     "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "warmup": args.warmup,
                     "runs": args.runs,
-                    "test_file": str(test_file),
+                    "test_file": test_file_rel,
                 },
                 "results": [row],
             },

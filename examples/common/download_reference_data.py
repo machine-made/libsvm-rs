@@ -109,7 +109,7 @@ def main() -> None:
 
     manifest: Dict[str, object] = {
         "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "raw_dir": str(raw_dir),
+        "raw_dir": str(raw_dir.relative_to(root)),
         "datasets": {},
     }
 

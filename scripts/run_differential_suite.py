@@ -1005,8 +1005,8 @@ def main() -> None:
         "Differential suite complete: "
         f"{summary['pass']} pass, {summary['warn']} warn, {summary['fail']} fail, {summary['skip']} skip"
     )
-    print(f"Wrote {out_json}")
-    print(f"Wrote {out_md}")
+    print(f"Wrote {out_json.relative_to(root).as_posix()}")
+    print(f"Wrote {out_md.relative_to(root).as_posix()}")
     if summary["fail"] > 0:
         raise SystemExit(1)
 

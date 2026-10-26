@@ -3,7 +3,7 @@
     "generated_utc": "2026-06-15T11:00:14Z",
     "warmup": 3,
     "runs": 20,
-    "test_file": "/home/runner/work/libsvm-rs/libsvm-rs/examples/integrations/wasm_inference/output/tmp/heart_scale.test.svm"
+    "test_file": "examples/integrations/wasm_inference/output/tmp/heart_scale.test.svm"
   },
   "results": [
     {

@@ -4,11 +4,29 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJ_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LOCK_FILE="${PROJ_ROOT}/reference/libsvm_upstream_lock.json"
-WORK_ROOT="${PROJ_ROOT}/.tmp/reference_upstream"
-SRC_DIR="${WORK_ROOT}/libsvm"
-PROVENANCE_FILE="${PROJ_ROOT}/reference/reference_provenance.json"
-REPORT_FILE="${PROJ_ROOT}/reference/reference_build_report.md"
-BUILD_LOG="${PROJ_ROOT}/reference/reference_build.log"
+
+# Resolve a path (symlinks followed) and require it to be inside the repository.
+# Print the resolved path. Exit with an error otherwise.
+PROJ_ROOT_REAL="$(realpath -m -- "${PROJ_ROOT}")"
+safe_output() {
+    local resolved
+    resolved="$(realpath -m -- "$1")"
+    case "${resolved}" in
+        "${PROJ_ROOT_REAL}"/*) printf '%s\n' "${resolved}" ;;
+        *)
+            echo "ERROR: $1 resolves to ${resolved}, outside the repository (${PROJ_ROOT_REAL})." >&2
+            echo "Remove symlinks that point outside the repository, then run the script again." >&2
+            exit 1
+            ;;
+    esac
+}
+
+# Check every output path before the first write. Keep the resolved paths.
+WORK_ROOT="$(safe_output "${PROJ_ROOT}/.tmp/reference_upstream")"
+SRC_DIR="$(safe_output "${WORK_ROOT}/libsvm")"
+PROVENANCE_FILE="$(safe_output "${PROJ_ROOT}/reference/reference_provenance.json")"
+REPORT_FILE="$(safe_output "${PROJ_ROOT}/reference/reference_build_report.md")"
+BUILD_LOG="$(safe_output "${PROJ_ROOT}/reference/reference_build.log")"
 
 mkdir -p "${WORK_ROOT}"
 
@@ -99,7 +117,8 @@ python3 - \
     "${RELEASE_DATE}" \
     "${CC_VERSION}" \
     "${SRC_DIR}/svm-train" \
-    "${SRC_DIR}/svm-predict" <<'PY'
+    "${SRC_DIR}/svm-predict" \
+    "${PROJ_ROOT}" <<'PY'
 import hashlib
 import json
 import sys
@@ -116,6 +135,16 @@ release_date = sys.argv[7]
 cc_version = sys.argv[8]
 train_bin = Path(sys.argv[9])
 predict_bin = Path(sys.argv[10])
+proj_root = Path(sys.argv[11])
+
+
+def repo_relative(path: Path) -> str:
+    # Keep committed provenance free of local paths.
+    try:
+        return path.resolve().relative_to(proj_root.resolve()).as_posix()
+    except ValueError:
+        sys.exit(f"error: {path} is outside the repository ({proj_root}); keep the work directory inside it.")
+
 
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
@@ -138,21 +167,22 @@ payload = {
         "cc_version": cc_version,
         "svm_train_sha256": sha256(train_bin),
         "svm_predict_sha256": sha256(predict_bin),
-        "svm_train_path": str(train_bin),
-        "svm_predict_path": str(predict_bin),
+        "svm_train_path": repo_relative(train_bin),
+        "svm_predict_path": repo_relative(predict_bin),
     },
 }
 
 out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 PY
 
-python3 - "${PROVENANCE_FILE}" "${REPORT_FILE}" <<'PY'
+python3 - "${PROVENANCE_FILE}" "${REPORT_FILE}" "${PROJ_ROOT}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 provenance_path = Path(sys.argv[1])
 report_path = Path(sys.argv[2])
+proj_root = Path(sys.argv[3])
 data = json.loads(provenance_path.read_text())
 
 up = data["upstream"]
@@ -182,7 +212,7 @@ lines = [
     "",
     "## Artifacts",
     "",
-    f"- Provenance JSON: `{provenance_path.as_posix()}`",
+    f"- Provenance JSON: `{provenance_path.resolve().relative_to(proj_root.resolve()).as_posix()}`",
 ]
 
 report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

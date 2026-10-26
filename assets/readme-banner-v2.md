@@ -30,5 +30,5 @@ Output intent: professional README banner suitable for GitHub, to be saved as as
 ```
 
 Post-processing:
-- Copied generated PNG from `/home/rfrantz/.codex/generated_images/019eb5a2-dbd5-7210-8aac-432ebf646fa2/ig_0b74faec4d7bae71016a2a6795c93881919c1ed6e82c8e1802.png` to `assets/readme-banner-v2.png`.
+- Copied generated PNG from `~/.codex/generated_images/019eb5a2-dbd5-7210-8aac-432ebf646fa2/ig_0b74faec4d7bae71016a2a6795c93881919c1ed6e82c8e1802.png` to `assets/readme-banner-v2.png`.
 - No deterministic overlay was needed; the generated project name was readable and spelled correctly.

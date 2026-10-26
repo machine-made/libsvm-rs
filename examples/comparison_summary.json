@@ -2,8 +2,8 @@
   "generated_utc": "2026-10-08T22:41:07Z",
   "case_count": 41,
   "sources": [
-    "/home/rfrantz/libsvm-rs/examples/integrations/wasm_inference/output/results.json",
-    "/home/rfrantz/libsvm-rs/reference/benchmark_results.json"
+    "examples/integrations/wasm_inference/output/results.json",
+    "reference/benchmark_results.json"
   ],
   "runs": {
     "train_min": 20,

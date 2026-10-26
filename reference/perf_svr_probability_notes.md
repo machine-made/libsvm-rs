@@ -53,8 +53,8 @@ Observed output:
 [044/45] housing_scale_precomputed_s3_t4_default
 [045/45] housing_scale_precomputed_s4_t4_default
 Differential suite complete: 25 pass, 14 warn, 6 fail, 0 skip
-Wrote /home/rfrantz/Projects/libsvm-rs/reference/differential_results.json
-Wrote /home/rfrantz/Projects/libsvm-rs/reference/differential_report.md
+Wrote reference/differential_results.json
+Wrote reference/differential_report.md
 ```
 
 Expected by goal: `236 pass / 4 warn / 0 fail / 10 skip`. Because the differential counts include failures, the goal's stop condition applies. Generated tracked reference/data artifacts from the failed run were reverted; `.sc/jeh-differential.log` remains untracked as requested.
@@ -105,8 +105,8 @@ Differential suite:
 
 ```text
 Differential suite complete: 240 pass, 0 warn, 0 fail, 10 skip
-Wrote /home/rfrantz/Projects/libsvm-rs/reference/differential_results.json
-Wrote /home/rfrantz/Projects/libsvm-rs/reference/differential_report.md
+Wrote reference/differential_results.json
+Wrote reference/differential_report.md
 ```
 
 ## 2026-10-09: SVR training gap closed (libsvm-rs-eaz)
