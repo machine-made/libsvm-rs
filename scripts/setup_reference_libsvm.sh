@@ -125,7 +125,7 @@ def repo_relative(path: Path) -> str:
     try:
         return path.resolve().relative_to(proj_root.resolve()).as_posix()
     except ValueError:
-        return str(path)
+        sys.exit(f"error: {path} is outside the repository ({proj_root}); keep the work directory inside it.")
 
 
 def sha256(path: Path) -> str:
