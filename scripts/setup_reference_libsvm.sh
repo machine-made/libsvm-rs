@@ -4,11 +4,29 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJ_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LOCK_FILE="${PROJ_ROOT}/reference/libsvm_upstream_lock.json"
-WORK_ROOT="${PROJ_ROOT}/.tmp/reference_upstream"
-SRC_DIR="${WORK_ROOT}/libsvm"
-PROVENANCE_FILE="${PROJ_ROOT}/reference/reference_provenance.json"
-REPORT_FILE="${PROJ_ROOT}/reference/reference_build_report.md"
-BUILD_LOG="${PROJ_ROOT}/reference/reference_build.log"
+
+# Resolve a path (symlinks followed) and require it to be inside the repository.
+# Print the resolved path. Exit with an error otherwise.
+PROJ_ROOT_REAL="$(realpath -m -- "${PROJ_ROOT}")"
+safe_output() {
+    local resolved
+    resolved="$(realpath -m -- "$1")"
+    case "${resolved}" in
+        "${PROJ_ROOT_REAL}"/*) printf '%s\n' "${resolved}" ;;
+        *)
+            echo "ERROR: $1 resolves to ${resolved}, outside the repository (${PROJ_ROOT_REAL})." >&2
+            echo "Remove symlinks that point outside the repository, then run the script again." >&2
+            exit 1
+            ;;
+    esac
+}
+
+# Check every output path before the first write. Keep the resolved paths.
+WORK_ROOT="$(safe_output "${PROJ_ROOT}/.tmp/reference_upstream")"
+SRC_DIR="$(safe_output "${WORK_ROOT}/libsvm")"
+PROVENANCE_FILE="$(safe_output "${PROJ_ROOT}/reference/reference_provenance.json")"
+REPORT_FILE="$(safe_output "${PROJ_ROOT}/reference/reference_build_report.md")"
+BUILD_LOG="$(safe_output "${PROJ_ROOT}/reference/reference_build.log")"
 
 mkdir -p "${WORK_ROOT}"
 
