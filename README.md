@@ -168,7 +168,7 @@ enable an optional feature:
 
 ```toml
 [dependencies]
-libsvm-rs = "0.9.1"
+libsvm-rs = "0.9.2"
 ```
 
 MSRV is Rust `1.80` for all builds.
