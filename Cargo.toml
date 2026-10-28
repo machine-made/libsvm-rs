@@ -13,7 +13,7 @@ edition = "2021"
 rust-version = "1.80"
 license = "BSD-3-Clause"
 repository = "https://github.com/machine-made/libsvm-rs"
-authors = ["Ricardo Frantz <rasfrantz@gmail.com>"]
+authors = ["Ricardo Frantz"]
 
 [workspace.dependencies]
 libsvm-rs = { path = "crates/libsvm", version = "0.9.2" }
