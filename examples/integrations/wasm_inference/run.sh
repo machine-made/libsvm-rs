@@ -30,9 +30,17 @@ fi
 
 rustup target add wasm32-unknown-unknown >/dev/null
 
-if ! command -v wasm-bindgen >/dev/null 2>&1; then
-  echo "Installing wasm-bindgen-cli (one-time)..."
-  cargo install wasm-bindgen-cli --locked >/dev/null
+# The wasm-bindgen CLI must match the wasm-bindgen crate version exactly.
+# The example crate has no lockfile, so the crate version is whatever is newest.
+WB_CRATE_VERSION="$(cargo metadata --manifest-path "$WASM_CRATE" --format-version 1 \
+  | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "wasm-bindgen"))')"
+WB_CLI_VERSION=""
+if command -v wasm-bindgen >/dev/null 2>&1; then
+  WB_CLI_VERSION="$(wasm-bindgen --version | awk '{print $2}')"
+fi
+if [ "$WB_CLI_VERSION" != "$WB_CRATE_VERSION" ]; then
+  echo "Installing wasm-bindgen-cli $WB_CRATE_VERSION (found: ${WB_CLI_VERSION:-none})..."
+  cargo install wasm-bindgen-cli --version "$WB_CRATE_VERSION" --locked --force >/dev/null
 fi
 
 echo "Building wasm module..."
