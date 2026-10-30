@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The repository, homepage and docs links now point to
   github.com/machine-made/libsvm-rs. The code does not change.
 - The package metadata and the `NOTICE` file no longer list a personal email
-  address. The `NOTICE` contact is now the project page.
+  address. The `NOTICE` contact is now the vulnerability report form.
 - The development dependencies `proptest` and `serde_json` moved to newer
   versions. The library code and its runtime dependencies do not change.
 
