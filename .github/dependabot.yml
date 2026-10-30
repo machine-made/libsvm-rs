@@ -11,8 +11,48 @@ updates:
         patterns:
           - "*"
 
+  - package-ecosystem: "cargo"
+    directory: "/bins/svm-predict-rs"
+    open-pull-requests-limit: 5
+    schedule:
+      interval: monthly
+    groups:
+      cargo-bins-svm-predict-rs-updates:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "cargo"
+    directory: "/bins/svm-scale-rs"
+    open-pull-requests-limit: 5
+    schedule:
+      interval: monthly
+    groups:
+      cargo-bins-svm-scale-rs-updates:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "cargo"
+    directory: "/bins/svm-train-rs"
+    open-pull-requests-limit: 5
+    schedule:
+      interval: monthly
+    groups:
+      cargo-bins-svm-train-rs-updates:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "cargo"
+    directory: "/crates/libsvm"
+    open-pull-requests-limit: 5
+    schedule:
+      interval: monthly
+    groups:
+      cargo-crates-libsvm-updates:
+        patterns:
+          - "*"
+
   - package-ecosystem: "github-actions"
-    directory: "/.github/workflows"
+    directory: "/"
     open-pull-requests-limit: 5
     schedule:
       interval: monthly
