@@ -5,12 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.9.2] - 2026-10-28
+## [0.9.2] - 2026-10-31
 
 ### Changed
 
 - The repository, homepage and docs links now point to
   github.com/machine-made/libsvm-rs. The code does not change.
+- The package metadata and the `NOTICE` file no longer list a personal email
+  address. The `NOTICE` contact is now the project page.
+- The development dependencies `proptest` and `serde_json` moved to newer
+  versions. The library code and its runtime dependencies do not change.
+
+### Fixed
+
+- The WebAssembly example script now installs the `wasm-bindgen` command-line
+  tool in the same version as the crate that the build resolves.
 
 ## [0.9.1] - 2026-10-09
 
