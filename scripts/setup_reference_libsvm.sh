@@ -5,12 +5,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJ_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LOCK_FILE="${PROJ_ROOT}/reference/libsvm_upstream_lock.json"
 
-# Resolve a path (symlinks followed) and require it to be inside the repository.
-# Print the resolved path. Exit with an error otherwise.
-PROJ_ROOT_REAL="$(realpath -m -- "${PROJ_ROOT}")"
+# Resolve a path (symlinks followed, missing parts allowed) and require it to be
+# inside the repository. Print the resolved path. Exit with an error otherwise.
+# Python's realpath works the same on Linux and macOS; BSD realpath has no -m.
+resolve_path() {
+    python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"
+}
+PROJ_ROOT_REAL="$(resolve_path "${PROJ_ROOT}")"
 safe_output() {
     local resolved
-    resolved="$(realpath -m -- "$1")"
+    resolved="$(resolve_path "$1")"
     case "${resolved}" in
         "${PROJ_ROOT_REAL}"/*) printf '%s\n' "${resolved}" ;;
         *)
