@@ -31,14 +31,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # 1.93.1 (pinned to match rust-toolchain.toml)
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable (matches rust-toolchain.toml)
         with:
-          toolchain: 1.93.1
+          toolchain: stable
           targets: ${{ matrix.target }}
           # Install components declared in rust-toolchain.toml up front. Without
           # this, rustup auto-installs them the first time cargo runs, which
           # fails on Windows with `error: target was empty`.
           components: rustfmt, clippy
+      - name: Record compiler version
+        shell: bash
+        run: |
+          rustc --version
+          cargo --version
       - name: Build release binaries
         # `shell: bash` is required on Windows runners so that `"$TARGET"`
         # expands as an env var (git-bash). PowerShell would treat `$TARGET`
@@ -120,10 +125,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # 1.93.1 (pinned to match rust-toolchain.toml)
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable (matches rust-toolchain.toml)
         with:
-          toolchain: 1.93.1
+          toolchain: stable
           components: rustfmt, clippy
+      - name: Record compiler version
+        run: |
+          rustc --version
+          cargo --version
       - name: Authenticate to crates.io
         id: auth
         uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9  # v1.0.6

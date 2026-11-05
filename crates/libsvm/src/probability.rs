@@ -308,7 +308,7 @@ pub fn svm_binary_svc_probability(
         for (fold, predictions) in fold_predictions.into_iter().enumerate() {
             let begin = fold * l / nr_fold;
             let end = (fold + 1) * l / nr_fold;
-            for (j, prediction) in (begin..end).zip(predictions.into_iter()) {
+            for (j, prediction) in (begin..end).zip(predictions) {
                 dec_values[perm[j]] = prediction;
             }
         }
@@ -322,7 +322,7 @@ pub fn svm_binary_svc_probability(
             let predictions =
                 evaluate_binary_svc_probability_fold(prob, param, cp, cn, &perm, begin, end);
 
-            for (j, prediction) in (begin..end).zip(predictions.into_iter()) {
+            for (j, prediction) in (begin..end).zip(predictions) {
                 dec_values[perm[j]] = prediction;
             }
         }
