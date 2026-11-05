@@ -7,7 +7,9 @@ reproducible from the tagged source tree.
 
 - Tagged source checkout, for example `v0.8.0`.
 - The matching GitHub Release archive for one target.
-- Rust toolchain pinned by `rust-toolchain.toml`.
+- The stable Rust compiler that built the release. Its exact version is
+  printed at the top of the release job log (step "Record compiler version").
+  Install that version with `rustup toolchain install <version>`.
 - Cargo lockfile from the tag.
 
 ## Procedure
@@ -15,7 +17,7 @@ reproducible from the tagged source tree.
 ```sh
 git fetch --tags
 git checkout v0.8.0
-cargo build --release --locked --target x86_64-unknown-linux-gnu
+cargo +<version> build --release --locked --target x86_64-unknown-linux-gnu
 mkdir -p .tmp/reproduce-release
 cp target/x86_64-unknown-linux-gnu/release/svm-train-rs .tmp/reproduce-release/
 cp target/x86_64-unknown-linux-gnu/release/svm-predict-rs .tmp/reproduce-release/
