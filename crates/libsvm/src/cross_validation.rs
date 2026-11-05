@@ -201,7 +201,7 @@ pub fn svm_cross_validation(
                 let end = fold_start[i + 1];
                 let predictions = evaluate_fold(prob, param, &perm, begin, end);
 
-                for (j, prediction) in (begin..end).zip(predictions.into_iter()) {
+                for (j, prediction) in (begin..end).zip(predictions) {
                     target[perm[j]] = prediction;
                 }
             }
@@ -239,7 +239,7 @@ pub fn svm_cross_validation(
             let end = fold_start[i + 1];
             let predictions = evaluate_fold(prob, param, &perm, begin, end);
 
-            for (j, prediction) in (begin..end).zip(predictions.into_iter()) {
+            for (j, prediction) in (begin..end).zip(predictions) {
                 target[perm[j]] = prediction;
             }
         }
