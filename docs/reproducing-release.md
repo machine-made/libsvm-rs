@@ -10,7 +10,7 @@ reproducible from the tagged source tree.
 - The stable Rust compiler that built the archive. Open the log of the
   `Build (<target>)` job that matches your archive; its step "Record compiler
   version" prints `rustc <version> (...)`. Install that `<version>` with
-  `rustup toolchain install <version>`.
+  `rustup toolchain install <version> --target x86_64-unknown-linux-gnu`.
 - Cargo lockfile from the tag.
 
 ## Procedure
