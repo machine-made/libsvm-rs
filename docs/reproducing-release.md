@@ -7,9 +7,10 @@ reproducible from the tagged source tree.
 
 - Tagged source checkout, for example `v0.8.0`.
 - The matching GitHub Release archive for one target.
-- The stable Rust compiler that built the release. Its exact version is
-  printed at the top of the release job log (step "Record compiler version").
-  Install that version with `rustup toolchain install <version>`.
+- The stable Rust compiler that built the archive. Open the log of the
+  `Build (<target>)` job that matches your archive; its step "Record compiler
+  version" prints `rustc <version> (...)`. Install that `<version>` with
+  `rustup toolchain install <version>`.
 - Cargo lockfile from the tag.
 
 ## Procedure
