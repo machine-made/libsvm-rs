@@ -481,7 +481,7 @@ Coverage metrics: 93.24% line coverage, 94.35% function coverage (library crate)
 
 - **Runtime**: `thiserror` (error derive macros)
 - **Optional**: `serde` (feature-gated serialization), `rayon` (feature-gated parallel cross-validation)
-- **Dev**: `float-cmp` (approximate float comparison), `criterion` (benchmarks), `proptest` (property-based testing)
+- **Dev**: `criterion` (benchmarks), `proptest` (property-based testing)
 
 ## Known Limitations
 
