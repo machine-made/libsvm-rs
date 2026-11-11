@@ -1,10 +1,5 @@
 //! Lightweight scoring helpers for CLI outputs and test checks.
 
-#![expect(
-    clippy::float_cmp,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
-)]
-
 /// Compute mean squared error and squared correlation coefficient.
 #[must_use]
 #[expect(
@@ -56,6 +51,10 @@ pub fn regression_metrics(predictions: &[f64], labels: &[f64]) -> (f64, f64) {
 #[expect(
     clippy::cast_precision_loss,
     reason = "C converts the same integer counts to double at these points"
+)]
+#[expect(
+    clippy::float_cmp,
+    reason = "Predicted labels are compared with class labels copied from the input"
 )]
 pub fn accuracy_percentage(predictions: &[f64], labels: &[f64]) -> f64 {
     if predictions.is_empty() || predictions.len() != labels.len() {

@@ -21,13 +21,6 @@
     clippy::arithmetic_side_effects,
     reason = "Checked access is not yet done in this module; remove this line when it is"
 )]
-#![cfg_attr(
-    test,
-    expect(
-        clippy::float_cmp,
-        reason = "Checked access is not yet done in this module; remove this line when it is"
-    )
-)]
 
 use crate::kernel::k_function;
 use crate::probability::{multiclass_probability, predict_one_class_probability, sigmoid_predict};
@@ -250,6 +243,10 @@ mod tests {
         clippy::cast_precision_loss,
         reason = "C converts the same integer counts to double at these points"
     )]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are compared with class labels copied from the input"
+    )]
     fn predict_heart_scale() {
         // Load model trained by C LIBSVM and predict on training data
         let model = load_model(&data_dir().join("heart_scale.model")).unwrap();
@@ -288,6 +285,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are the exact class values 1 and -1"
+    )]
     fn predict_probability_binary() {
         let problem = load_problem(&data_dir().join("heart_scale")).unwrap();
         let param = crate::types::SvmParameter {
@@ -349,6 +350,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are compared with the labels the C tool wrote"
+    )]
     fn predict_matches_c_svm_predict() {
         // Run C svm-predict and compare outputs
         // First, let's verify our predictions match by checking a few specific instances

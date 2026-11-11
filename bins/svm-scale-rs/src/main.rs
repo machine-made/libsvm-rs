@@ -7,10 +7,6 @@
     clippy::arithmetic_side_effects,
     reason = "A command-line tool reports bad input through its exit status"
 )]
-#![expect(
-    clippy::float_cmp,
-    reason = "A command-line tool reports bad input through its exit status"
-)]
 #![forbid(unsafe_code)]
 
 use libsvm_rs::io::{format_17g, format_g};
@@ -100,6 +96,10 @@ fn warn_unseen_feature_range(
 ) {
     for j in first..=last {
         let ju = j as usize;
+        #[expect(
+            clippy::float_cmp,
+            reason = "C warns only when the stored feature minimum and maximum differ"
+        )]
         if ju < feature_min.len() && feature_min[ju] != feature_max[ju] {
             warn_missing_scale_feature(j, data_filename, rfile);
             feature_min[j as usize] = 0.0;
@@ -254,11 +254,11 @@ fn main() {
         let mut parts = line.split_whitespace();
 
         // Parse label
-        if let Some(label_str) = parts.next()
-            && let Ok(target) = label_str.parse::<f64>()
-        {
-            y_max = y_max.max(target);
-            y_min = y_min.min(target);
+        if let Some(label_str) = parts.next() {
+            if let Ok(target) = label_str.parse::<f64>() {
+                y_max = y_max.max(target);
+                y_min = y_min.min(target);
+            }
         }
 
         let mut next_index = 1i32;
@@ -398,6 +398,10 @@ fn main() {
         );
         for j in 1..=max_index {
             let ju = j as usize;
+            #[expect(
+                clippy::float_cmp,
+                reason = "C writes a feature range only when the stored ends differ"
+            )]
             if feature_min[ju] != feature_max[ju] {
                 write_or_exit(
                     writeln!(
@@ -423,19 +427,23 @@ fn main() {
         let mut parts = line.split_whitespace();
 
         // Scale target
-        if let Some(label_str) = parts.next()
-            && let Ok(mut target) = label_str.parse::<f64>()
-        {
-            if y_scaling {
-                if target == y_min {
-                    target = y_lower;
-                } else if target == y_max {
-                    target = y_upper;
-                } else {
-                    target = y_lower + (y_upper - y_lower) * (target - y_min) / (y_max - y_min);
+        if let Some(label_str) = parts.next() {
+            if let Ok(mut target) = label_str.parse::<f64>() {
+                if y_scaling {
+                    #[expect(
+                        clippy::float_cmp,
+                        reason = "A label is compared with the minimum or maximum stored for it"
+                    )]
+                    if target == y_min {
+                        target = y_lower;
+                    } else if target == y_max {
+                        target = y_upper;
+                    } else {
+                        target = y_lower + (y_upper - y_lower) * (target - y_min) / (y_max - y_min);
+                    }
                 }
+                print!("{} ", format_17g(target));
             }
-            print!("{} ", format_17g(target));
         }
 
         let mut next_index = 1i32;
@@ -513,10 +521,18 @@ fn output_feature(
     }
 
     // Skip single-valued features
+    #[expect(
+        clippy::float_cmp,
+        reason = "C skips a feature when its stored minimum and maximum are equal"
+    )]
     if feature_max[iu] == feature_min[iu] {
         return;
     }
 
+    #[expect(
+        clippy::float_cmp,
+        reason = "A scaled bound is compared with the value it was set to"
+    )]
     let scaled = if value == feature_min[iu] {
         lower
     } else if value == feature_max[iu] {

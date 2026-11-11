@@ -18,13 +18,6 @@
     clippy::arithmetic_side_effects,
     reason = "Checked access is not yet done in this module; remove this line when it is"
 )]
-#![cfg_attr(
-    test,
-    expect(
-        clippy::float_cmp,
-        reason = "Checked access is not yet done in this module; remove this line when it is"
-    )
-)]
 
 use crate::qmatrix::{OneClassQ, SvcQ, SvrQ};
 use crate::solver::{SolutionInfo, Solver, SolverVariant};
@@ -635,6 +628,10 @@ mod tests {
         clippy::cast_precision_loss,
         reason = "C converts the same integer counts to double at these points"
     )]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are compared with class labels and with the other model"
+    )]
     fn train_c_svc_heart_scale() {
         let problem = load_problem(&data_dir().join("heart_scale")).unwrap();
         let param = SvmParameter {
@@ -710,6 +707,10 @@ mod tests {
         clippy::cast_precision_loss,
         reason = "C converts the same integer counts to double at these points"
     )]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are compared with class labels copied from the input"
+    )]
     fn train_c_svc_iris_multiclass() {
         let problem = load_problem(&data_dir().join("iris.scale")).unwrap();
         let param = SvmParameter {
@@ -755,6 +756,10 @@ mod tests {
     #[expect(
         clippy::cast_precision_loss,
         reason = "C converts the same integer counts to double at these points"
+    )]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are compared with class labels copied from the input"
     )]
     fn train_c_svc_precomputed_kernel() {
         let problem = load_problem(&data_dir().join("heart_scale.precomputed")).unwrap();
@@ -872,6 +877,10 @@ mod tests {
     #[expect(
         clippy::cast_precision_loss,
         reason = "C converts the same integer counts to double at these points"
+    )]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are compared with class labels copied from the input"
     )]
     fn train_nu_svc() {
         let problem = load_problem(&data_dir().join("heart_scale")).unwrap();

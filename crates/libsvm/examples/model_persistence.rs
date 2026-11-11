@@ -1,7 +1,10 @@
 //! Train, save, load, and predict with a persisted model.
 //!
 //! Run:
-//!   cargo run -p libsvm-rs --example `model_persistence`
+//!
+//! ```sh
+//! cargo run -p libsvm-rs --example model_persistence
+//! ```
 #![expect(clippy::expect_used, reason = "An example stops when a load fails")]
 #![expect(
     clippy::indexing_slicing,

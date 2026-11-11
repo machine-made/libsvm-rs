@@ -1,6 +1,5 @@
 //! Basic end-to-end training example (train + evaluate + save).
 #![expect(clippy::expect_used, reason = "An example stops when a load fails")]
-#![expect(clippy::float_cmp, reason = "An example compares predicted labels")]
 #![expect(
     clippy::cast_precision_loss,
     reason = "An example prints accuracy as a percent"
@@ -12,6 +11,10 @@ use libsvm_rs::train::svm_train;
 use libsvm_rs::{KernelType, SvmParameter, SvmType, set_quiet};
 use std::path::Path;
 
+#[expect(
+    clippy::float_cmp,
+    reason = "Predicted labels are compared with class labels copied from the input"
+)]
 fn main() {
     set_quiet(true);
 

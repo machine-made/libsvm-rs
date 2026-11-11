@@ -19,13 +19,6 @@
     clippy::arithmetic_side_effects,
     reason = "Checked access is not yet done in this module; remove this line when it is"
 )]
-#![cfg_attr(
-    test,
-    expect(
-        clippy::float_cmp,
-        reason = "Checked access is not yet done in this module; remove this line when it is"
-    )
-)]
 
 use crate::predict::{predict, predict_probability};
 use crate::train::svm_train;
@@ -287,6 +280,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are the exact class values 1 and -1"
+    )]
     fn cross_validation_basic() {
         let labels = vec![1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0];
         let instances: Vec<Vec<SvmNode>> = (0..10)
@@ -315,6 +312,10 @@ mod tests {
     #[expect(
         clippy::cast_precision_loss,
         reason = "C converts the same integer counts to double at these points"
+    )]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are compared with class labels copied from the input"
     )]
     fn cross_validation_classification() {
         let problem = load_problem(&data_dir().join("heart_scale")).unwrap();
@@ -378,6 +379,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are the exact class values 1 and -1"
+    )]
     fn cross_validation_zero_folds_clamps_to_leave_one_out() {
         let labels = vec![1.0, -1.0, 1.0, -1.0];
         let instances: Vec<Vec<SvmNode>> = vec![

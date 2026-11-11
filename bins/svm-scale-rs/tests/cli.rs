@@ -1,11 +1,7 @@
 //! Check svm-scale command-line flags.
 
 #![expect(clippy::unwrap_used, reason = "Tests unwrap a known-valid result")]
-#![expect(clippy::indexing_slicing, reason = "Tests unwrap a known-valid result")]
-#![expect(
-    clippy::arithmetic_side_effects,
-    reason = "Tests unwrap a known-valid result"
-)]
+#![expect(clippy::indexing_slicing, reason = "Flag chunks are never empty")]
 
 use std::fs;
 use std::path::{Path, PathBuf};

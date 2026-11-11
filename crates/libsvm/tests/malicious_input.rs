@@ -13,7 +13,10 @@
     clippy::panic,
     reason = "A test panics when the loader accepts a bad file"
 )]
-#![expect(clippy::indexing_slicing, reason = "Tests unwrap a known-valid result")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "The fixture model stores one coefficient row and one rho"
+)]
 
 use std::path::PathBuf;
 

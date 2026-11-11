@@ -4,7 +4,10 @@
 //! - Determinism: repeated predictions with same input produce identical results
 //! - Classification invariant: predictions are valid training labels
 //! - Cross-validation: outputs are finite and valid labels
-#![expect(clippy::expect_used, reason = "Tests unwrap a known-valid result")]
+#![expect(
+    clippy::expect_used,
+    reason = "A property test expects a known-valid result"
+)]
 #![expect(
     clippy::indexing_slicing,
     reason = "A property test indexes a generated case"

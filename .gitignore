@@ -39,5 +39,6 @@ examples/integrations/wasm_inference/output/*
 
 # supervisor-coder dispatch artifacts
 /.sc/
-.jac
+# Local links to the project's planning folder; never committed
+/.jac
 /AGENTS.md

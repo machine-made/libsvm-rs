@@ -11,6 +11,10 @@ pub(crate) fn xorshift64star(state: &mut u64) -> u64 {
     clippy::cast_possible_truncation,
     reason = "A test helper maps a 64-bit counter onto a slice index"
 )]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "The sum of the index and one stays inside the chunk count"
+)]
 pub(crate) fn shuffle_flag_chunks<T>(chunks: &mut [Vec<T>], state: &mut u64) {
     let len = chunks.len();
     if len <= 1 {

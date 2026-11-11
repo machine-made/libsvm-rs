@@ -7,10 +7,6 @@
     clippy::arithmetic_side_effects,
     reason = "A command-line tool reports bad input through its exit status"
 )]
-#![expect(
-    clippy::float_cmp,
-    reason = "A command-line tool reports bad input through its exit status"
-)]
 #![forbid(unsafe_code)]
 
 use libsvm_rs::io::{format_17g, format_g, load_model, load_problem};
@@ -202,6 +198,10 @@ fn main() {
             );
         } else {
             let total = problem.labels.len();
+            #[expect(
+                clippy::float_cmp,
+                reason = "Predicted labels are compared with class labels copied from the input"
+            )]
             let correct = predictions
                 .iter()
                 .zip(problem.labels.iter())

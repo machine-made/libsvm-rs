@@ -1,10 +1,6 @@
 //! Check svm-train command-line flags.
 
 #![expect(clippy::unwrap_used, reason = "Tests unwrap a known-valid result")]
-#![expect(
-    clippy::arithmetic_side_effects,
-    reason = "Tests unwrap a known-valid result"
-)]
 
 use std::fs;
 use std::path::{Path, PathBuf};

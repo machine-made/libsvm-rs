@@ -1169,7 +1169,7 @@ fn validate_precomputed_row(
 /// for safety.
 #[expect(
     clippy::too_many_arguments,
-    reason = "Keep the C solver arguments in one call"
+    reason = "The function checks the model header before the reader loads support vectors"
 )]
 fn validate_model_header(
     svm_type: SvmType,
