@@ -1,4 +1,7 @@
+//! Check serde round-trips for models and LIBSVM type codes.
+
 #![cfg(feature = "serde")]
+#![expect(clippy::unwrap_used, reason = "Tests unwrap a known-valid result")]
 
 use std::path::PathBuf;
 
@@ -52,13 +55,13 @@ fn assert_f64_bits_stable(left: &SvmModel, right: &SvmModel) {
     }
 }
 
-fn assert_json_roundtrip(model: SvmModel) {
-    let json = serde_json::to_string(&model).unwrap();
+fn assert_json_roundtrip(model: &SvmModel) {
+    let json = serde_json::to_string(model).unwrap();
     let decoded: SvmModel = serde_json::from_str(&json).unwrap();
     let json_again = serde_json::to_string(&decoded).unwrap();
     let decoded_again: SvmModel = serde_json::from_str(&json_again).unwrap();
     assert_f64_bits_stable(&decoded, &decoded_again);
-    assert!(!model_text(&decoded).is_empty());
+    assert_ne!(model_text(&decoded), "");
 }
 
 #[test]
@@ -85,7 +88,7 @@ fn heart_scale_classification_roundtrips_through_json() {
         gamma: 1.0 / 13.0,
         ..SvmParameter::default()
     };
-    assert_json_roundtrip(svm_train(&problem, &param));
+    assert_json_roundtrip(&svm_train(&problem, &param));
 }
 
 #[test]
@@ -96,7 +99,7 @@ fn heart_scale_probability_classification_roundtrips_through_json() {
         probability: true,
         ..SvmParameter::default()
     };
-    assert_json_roundtrip(svm_train(&problem, &param));
+    assert_json_roundtrip(&svm_train(&problem, &param));
 }
 
 #[test]
@@ -109,5 +112,5 @@ fn svr_roundtrips_through_json() {
         c: 1.0,
         ..SvmParameter::default()
     };
-    assert_json_roundtrip(svm_train(&problem, &param));
+    assert_json_roundtrip(&svm_train(&problem, &param));
 }

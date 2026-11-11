@@ -1,3 +1,12 @@
+//! LIBSVM `svm-scale` command-line tool.
+#![expect(
+    clippy::indexing_slicing,
+    reason = "A command-line tool reports bad input through its exit status"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "A command-line tool reports bad input through its exit status"
+)]
 #![forbid(unsafe_code)]
 
 use libsvm_rs::io::{format_17g, format_g};
@@ -32,21 +41,15 @@ fn parse_flag_arg<'a>(args: &'a [String], i: &mut usize) -> &'a str {
 
 fn parse_feature_index_or_exit(idx_str: &str) -> i32 {
     let index = idx_str.parse::<i32>().unwrap_or_else(|_| {
-        eprintln!("invalid feature index: {}", idx_str);
+        eprintln!("invalid feature index: {idx_str}");
         process::exit(1);
     });
     if index <= 0 {
-        eprintln!(
-            "feature index {} out of valid range [1, {}]",
-            index, MAX_FEATURE_INDEX
-        );
+        eprintln!("feature index {index} out of valid range [1, {MAX_FEATURE_INDEX}]");
         process::exit(1);
     }
     if index > MAX_FEATURE_INDEX {
-        eprintln!(
-            "feature index {} exceeds limit ({})",
-            index, MAX_FEATURE_INDEX
-        );
+        eprintln!("feature index {index} exceeds limit ({MAX_FEATURE_INDEX})");
         process::exit(1);
     }
     index
@@ -54,32 +57,35 @@ fn parse_feature_index_or_exit(idx_str: &str) -> i32 {
 
 fn open_file_or_exit(filename: &str) -> File {
     File::open(filename).unwrap_or_else(|e| {
-        eprintln!("can't open file {}: {}", filename, e);
+        eprintln!("can't open file {filename}: {e}");
         process::exit(1);
     })
 }
 
 fn read_line_or_exit(line: io::Result<String>, filename: &str) -> String {
     line.unwrap_or_else(|e| {
-        eprintln!("can't read file {}: {}", filename, e);
+        eprintln!("can't read file {filename}: {e}");
         process::exit(1);
     })
 }
 
 fn write_or_exit(result: io::Result<()>, filename: &str) {
     result.unwrap_or_else(|e| {
-        eprintln!("can't write file {}: {}", filename, e);
+        eprintln!("can't write file {filename}: {e}");
         process::exit(1);
     });
 }
 
 fn warn_missing_scale_feature(index: i32, data_filename: &str, rfile: &str) {
     eprintln!(
-        "WARNING: feature index {} appeared in file {} was not seen in the scaling factor file {}. The feature is scaled to 0.",
-        index, data_filename, rfile
+        "WARNING: feature index {index} appeared in file {data_filename} was not seen in the scaling factor file {rfile}. The feature is scaled to 0."
     );
 }
 
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "C converts the same signed feature index to a slice index"
+)]
 fn warn_unseen_feature_range(
     first: i32,
     last: i32,
@@ -90,6 +96,10 @@ fn warn_unseen_feature_range(
 ) {
     for j in first..=last {
         let ju = j as usize;
+        #[expect(
+            clippy::float_cmp,
+            reason = "C warns only when the stored feature minimum and maximum differ"
+        )]
         if ju < feature_min.len() && feature_min[ju] != feature_max[ju] {
             warn_missing_scale_feature(j, data_filename, rfile);
             feature_min[j as usize] = 0.0;
@@ -98,6 +108,18 @@ fn warn_unseen_feature_range(
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep the command-line option parser in one place"
+)]
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "C converts the same signed feature index to a slice index"
+)]
+#[expect(
+    clippy::if_not_else,
+    reason = "Keep the C branch order for comparison with the original"
+)]
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -171,7 +193,7 @@ fn main() {
     // If restoring, scan restore file for max_index first
     if let Some(ref rfile) = restore_filename {
         let f = File::open(rfile).unwrap_or_else(|_| {
-            eprintln!("can't open file {}", rfile);
+            eprintln!("can't open file {rfile}");
             process::exit(1);
         });
         let reader = BufReader::new(f);
@@ -269,7 +291,7 @@ fn main() {
     // ── Pass 2.5: save/restore ───────────────────────────────────────
     if let Some(ref rfile) = restore_filename {
         let content = std::fs::read_to_string(rfile).unwrap_or_else(|_| {
-            eprintln!("can't open file {}", rfile);
+            eprintln!("can't open file {rfile}");
             process::exit(1);
         });
         let mut lines = content.lines();
@@ -355,7 +377,7 @@ fn main() {
 
     if let Some(ref sfile) = save_filename {
         let mut out = File::create(sfile).unwrap_or_else(|_| {
-            eprintln!("can't open file {}", sfile);
+            eprintln!("can't open file {sfile}");
             process::exit(1);
         });
         if y_scaling {
@@ -376,6 +398,10 @@ fn main() {
         );
         for j in 1..=max_index {
             let ju = j as usize;
+            #[expect(
+                clippy::float_cmp,
+                reason = "C writes a feature range only when the stored ends differ"
+            )]
             if feature_min[ju] != feature_max[ju] {
                 write_or_exit(
                     writeln!(
@@ -404,6 +430,10 @@ fn main() {
         if let Some(label_str) = parts.next() {
             if let Ok(mut target) = label_str.parse::<f64>() {
                 if y_scaling {
+                    #[expect(
+                        clippy::float_cmp,
+                        reason = "A label is compared with the minimum or maximum stored for it"
+                    )]
                     if target == y_min {
                         target = y_lower;
                     } else if target == y_max {
@@ -465,14 +495,17 @@ fn main() {
 
     if new_num_nonzeros > num_nonzeros {
         eprintln!(
-            "WARNING: original #nonzeros {}\n\
-             \t > new      #nonzeros {}\n\
-             If feature values are non-negative and sparse, use -l 0 rather than the default -l -1",
-            num_nonzeros, new_num_nonzeros
+            "WARNING: original #nonzeros {num_nonzeros}\n\
+             \t > new      #nonzeros {new_num_nonzeros}\n\
+             If feature values are non-negative and sparse, use -l 0 rather than the default -l -1"
         );
     }
 }
 
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "C converts the same signed feature index to a slice index"
+)]
 fn output_feature(
     index: i32,
     value: f64,
@@ -488,10 +521,18 @@ fn output_feature(
     }
 
     // Skip single-valued features
+    #[expect(
+        clippy::float_cmp,
+        reason = "C skips a feature when its stored minimum and maximum are equal"
+    )]
     if feature_max[iu] == feature_min[iu] {
         return;
     }
 
+    #[expect(
+        clippy::float_cmp,
+        reason = "A scaled bound is compared with the value it was set to"
+    )]
     let scaled = if value == feature_min[iu] {
         lower
     } else if value == feature_max[iu] {

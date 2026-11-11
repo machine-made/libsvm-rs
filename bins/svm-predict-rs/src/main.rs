@@ -1,8 +1,17 @@
+//! LIBSVM `svm-predict` command-line tool.
+#![expect(
+    clippy::indexing_slicing,
+    reason = "A command-line tool reports bad input through its exit status"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "A command-line tool reports bad input through its exit status"
+)]
 #![forbid(unsafe_code)]
 
 use libsvm_rs::io::{format_17g, format_g, load_model, load_problem};
 use libsvm_rs::predict::{predict, predict_probability};
-use libsvm_rs::{regression_metrics, svm_check_probability_model, SvmType};
+use libsvm_rs::{SvmType, regression_metrics, svm_check_probability_model};
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
@@ -31,11 +40,23 @@ fn parse_flag_arg<'a>(args: &'a [String], i: &mut usize) -> &'a str {
 
 fn write_or_exit(result: io::Result<()>, output_file: &str) {
     result.unwrap_or_else(|e| {
-        eprintln!("can't write output file {}: {}", output_file, e);
+        eprintln!("can't write output file {output_file}: {e}");
         process::exit(1);
     });
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep the command-line option parser in one place"
+)]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "A command-line tool prints accuracy as a percent"
+)]
+#[expect(
+    clippy::single_match_else,
+    reason = "Keep the C branch order for comparison with the original"
+)]
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -59,7 +80,7 @@ fn main() {
         let value = parse_flag_arg(&args, &mut i);
 
         if flag.len() < 2 {
-            eprintln!("Unknown option: {}", flag);
+            eprintln!("Unknown option: {flag}");
             exit_with_help();
         }
         match flag.as_bytes()[1] {
@@ -67,7 +88,7 @@ fn main() {
                 predict_prob = value.parse::<i32>().unwrap_or(0) != 0;
             }
             _ => {
-                eprintln!("Unknown option: {}", flag);
+                eprintln!("Unknown option: {flag}");
                 exit_with_help();
             }
         }
@@ -88,7 +109,7 @@ fn main() {
 
     // Load model
     let model = load_model(Path::new(model_file)).unwrap_or_else(|e| {
-        eprintln!("can't open model file {}: {}", model_file, e);
+        eprintln!("can't open model file {model_file}: {e}");
         process::exit(1);
     });
 
@@ -104,13 +125,13 @@ fn main() {
 
     // Load test data
     let problem = load_problem(Path::new(test_file)).unwrap_or_else(|e| {
-        eprintln!("can't open input file {}: {}", test_file, e);
+        eprintln!("can't open input file {test_file}: {e}");
         process::exit(1);
     });
 
     // Open output file
     let out = File::create(output_file).unwrap_or_else(|e| {
-        eprintln!("can't open output file {}: {}", output_file, e);
+        eprintln!("can't open output file {output_file}: {e}");
         process::exit(1);
     });
     let mut out = BufWriter::new(out);
@@ -134,7 +155,7 @@ fn main() {
             // Classification header
             write_or_exit(write!(out, "labels"), output_file);
             for &lab in &model.label {
-                write_or_exit(write!(out, " {}", lab), output_file);
+                write_or_exit(write!(out, " {lab}"), output_file);
             }
             write_or_exit(writeln!(out), output_file);
         }
@@ -177,10 +198,14 @@ fn main() {
             );
         } else {
             let total = problem.labels.len();
+            #[expect(
+                clippy::float_cmp,
+                reason = "Predicted labels are compared with class labels copied from the input"
+            )]
             let correct = predictions
                 .iter()
                 .zip(problem.labels.iter())
-                .filter(|(&p, &l)| p == l)
+                .filter(|&(&p, &l)| p == l)
                 .count();
             eprintln!(
                 "Accuracy = {}% ({}/{}) (classification)",

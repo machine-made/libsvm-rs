@@ -7,6 +7,22 @@
 //! by a caller are not automatically checked; call [`check_parameter`] before
 //! training, and prefer the loader APIs for external model/problem files.
 
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "Checked access is not yet done in this module; remove this line when it is"
+    )
+)]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+
 /// Type of SVM formulation.
 ///
 /// Matches the integer constants in the original LIBSVM (`svm.h`):
@@ -135,6 +151,11 @@ impl SvmParameter {
     /// This checks the same constraints as the original LIBSVM's
     /// `svm_check_parameter`, except for the ν-SVC feasibility check
     /// which requires the problem. Use [`check_parameter`] for the full check.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::SvmError::InvalidParameter`] when a parameter
+    /// is outside the accepted range.
     pub fn validate(&self) -> Result<(), crate::error::SvmError> {
         use crate::error::SvmError;
 
@@ -192,6 +213,19 @@ impl SvmParameter {
 /// Full parameter check including ν-SVC feasibility against training data.
 ///
 /// Matches the original LIBSVM `svm_check_parameter()`.
+///
+/// # Errors
+///
+/// Returns [`crate::error::SvmError::InvalidParameter`] when the problem and
+/// parameters do not match.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "C truncates the same values at these points"
+)]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "C converts the same integer counts to double at these points"
+)]
 pub fn check_parameter(
     problem: &SvmProblem,
     param: &SvmParameter,
@@ -415,31 +449,37 @@ impl<'de> serde::Deserialize<'de> for SvmModel {
 
 impl SvmModel {
     /// Return the SVM type used by the model.
+    #[must_use]
     pub fn svm_type(&self) -> SvmType {
         self.param.svm_type
     }
 
     /// Return number of classes.
+    #[must_use]
     pub fn class_count(&self) -> usize {
         self.nr_class
     }
 
     /// Return class labels in internal one-vs-one order.
+    #[must_use]
     pub fn labels(&self) -> &[i32] {
         &self.label
     }
 
     /// Return original 1-based support-vector indices.
+    #[must_use]
     pub fn support_vector_indices(&self) -> &[usize] {
         &self.sv_indices
     }
 
     /// Return total number of support vectors.
+    #[must_use]
     pub fn support_vector_count(&self) -> usize {
         self.sv.len()
     }
 
     /// Return SVR sigma when a probability-capable SVR model is available.
+    #[must_use]
     pub fn svr_probability(&self) -> Option<f64> {
         match self.param.svm_type {
             SvmType::EpsilonSvr | SvmType::NuSvr => self.prob_a.first().copied(),
@@ -448,6 +488,7 @@ impl SvmModel {
     }
 
     /// Check whether the model contains probability metadata.
+    #[must_use]
     pub fn has_probability_model(&self) -> bool {
         match self.param.svm_type {
             SvmType::CSvc | SvmType::NuSvc => !self.prob_a.is_empty() && !self.prob_b.is_empty(),
@@ -458,36 +499,43 @@ impl SvmModel {
 }
 
 /// C-API style helper matching LIBSVM's `svm_get_svm_type`.
+#[must_use]
 pub fn svm_get_svm_type(model: &SvmModel) -> SvmType {
     model.svm_type()
 }
 
 /// C-API style helper matching LIBSVM's `svm_get_nr_class`.
+#[must_use]
 pub fn svm_get_nr_class(model: &SvmModel) -> usize {
     model.class_count()
 }
 
 /// C-API style helper matching LIBSVM's `svm_get_labels`.
+#[must_use]
 pub fn svm_get_labels(model: &SvmModel) -> &[i32] {
     model.labels()
 }
 
 /// C-API style helper matching LIBSVM's `svm_get_sv_indices`.
+#[must_use]
 pub fn svm_get_sv_indices(model: &SvmModel) -> &[usize] {
     model.support_vector_indices()
 }
 
 /// C-API style helper matching LIBSVM's `svm_get_nr_sv`.
+#[must_use]
 pub fn svm_get_nr_sv(model: &SvmModel) -> usize {
     model.support_vector_count()
 }
 
 /// C-API style helper matching LIBSVM's `svm_get_svr_probability`.
+#[must_use]
 pub fn svm_get_svr_probability(model: &SvmModel) -> Option<f64> {
     model.svr_probability()
 }
 
 /// C-API style helper matching LIBSVM's `svm_check_probability_model`.
+#[must_use]
 pub fn svm_check_probability_model(model: &SvmModel) -> bool {
     model.has_probability_model()
 }
@@ -581,7 +629,7 @@ mod tests {
             instances: Vec::new(),
         };
         let err = check_parameter(&problem, &SvmParameter::default()).unwrap_err();
-        assert!(format!("{}", err).contains("problem has no instances"));
+        assert!(format!("{err}").contains("problem has no instances"));
     }
 
     #[test]
@@ -591,7 +639,7 @@ mod tests {
             instances: Vec::new(),
         };
         let err = check_parameter(&problem, &SvmParameter::default()).unwrap_err();
-        assert!(format!("{}", err).contains("does not match instance length"));
+        assert!(format!("{err}").contains("does not match instance length"));
     }
 
     #[test]
@@ -611,7 +659,7 @@ mod tests {
             ..Default::default()
         };
         let err = check_parameter(&problem, &param).unwrap_err();
-        assert!(format!("{}", err).contains("missing 0:sample_serial_number"));
+        assert!(format!("{err}").contains("missing 0:sample_serial_number"));
     }
 
     #[test]

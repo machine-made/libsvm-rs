@@ -1,3 +1,7 @@
+//! Check svm-train command-line flags.
+
+#![expect(clippy::unwrap_used, reason = "Tests unwrap a known-valid result")]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -127,7 +131,7 @@ fn cross_validation_accepts_permuted_flag_chunk_order() {
     orders.push(vec!["-v", "3", "-q", "-h", "1"]);
     orders.push(vec!["-h", "1", "-v", "3", "-q"]);
 
-    for flag_order in orders.iter() {
+    for flag_order in &orders {
         let output = Command::new(bin_path())
             .args(flag_order.iter().copied())
             .arg(data_file("heart_scale"))
@@ -184,7 +188,7 @@ fn random_cross_validation_flag_permutations() {
         shuffle_flag_chunks(&mut chunks[..], &mut state);
 
         let mut command = Command::new(bin_path());
-        for chunk in chunks.iter() {
+        for chunk in &chunks {
             command.args(chunk.iter().copied());
         }
         let output = command.arg(data_file("heart_scale")).output().unwrap();

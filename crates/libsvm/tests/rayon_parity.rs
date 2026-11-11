@@ -1,3 +1,7 @@
+//! Check serial and rayon cross-validation stay bit-identical.
+
+#![expect(clippy::unwrap_used, reason = "Tests unwrap a known-valid result")]
+
 use libsvm_rs::cross_validation::svm_cross_validation;
 use libsvm_rs::io::load_problem;
 use libsvm_rs::{KernelType, SvmParameter, SvmType};
@@ -15,11 +19,11 @@ fn data_dir() -> PathBuf {
 // on Linux only; other platforms still exercise both code paths.
 #[cfg(target_os = "linux")]
 fn bits_digest(values: &[f64]) -> u64 {
-    values.iter().fold(0xcbf29ce484222325, |hash, value| {
+    values.iter().fold(0xcbf2_9ce4_8422_2325, |hash, value| {
         let mut h = hash;
         for byte in value.to_bits().to_le_bytes() {
             h ^= u64::from(byte);
-            h = h.wrapping_mul(0x100000001b3);
+            h = h.wrapping_mul(0x0100_0000_01b3);
         }
         h
     })

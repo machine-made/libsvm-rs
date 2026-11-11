@@ -1,10 +1,19 @@
+//! LIBSVM `svm-train` command-line tool.
+#![expect(
+    clippy::indexing_slicing,
+    reason = "A command-line tool reports bad input through its exit status"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "A command-line tool reports bad input through its exit status"
+)]
 #![forbid(unsafe_code)]
 
 use libsvm_rs::cross_validation::svm_cross_validation;
 use libsvm_rs::io::{format_g, load_problem, save_model};
 use libsvm_rs::train::svm_train;
 use libsvm_rs::{
-    accuracy_percentage, check_parameter, regression_metrics, KernelType, SvmParameter, SvmType,
+    KernelType, SvmParameter, SvmType, accuracy_percentage, check_parameter, regression_metrics,
 };
 use std::path::Path;
 use std::process;
@@ -53,6 +62,10 @@ fn parse_flag_arg<'a>(args: &'a [String], i: &mut usize) -> &'a str {
     value.as_str()
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep the command-line option parser in one place"
+)]
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -82,16 +95,16 @@ fn main() {
         if flag.starts_with("-w") && flag.len() > 2 {
             // -wi weight: class label is in flag[2..]
             let label: i32 = flag[2..].parse().unwrap_or_else(|_| {
-                eprintln!("Unknown option: {}", flag);
+                eprintln!("Unknown option: {flag}");
                 exit_with_help();
             });
             let weight: f64 = value.parse().unwrap_or_else(|_| {
-                eprintln!("Unknown option: {}", flag);
+                eprintln!("Unknown option: {flag}");
                 exit_with_help();
             });
             param.weight.push((label, weight));
         } else if flag.len() < 2 {
-            eprintln!("Unknown option: {}", flag);
+            eprintln!("Unknown option: {flag}");
             exit_with_help();
         } else {
             match flag.as_bytes()[1] {
@@ -154,7 +167,7 @@ fn main() {
                     }
                 }
                 _ => {
-                    eprintln!("Unknown option: {}", flag);
+                    eprintln!("Unknown option: {flag}");
                     exit_with_help();
                 }
             }
@@ -174,12 +187,12 @@ fn main() {
             .unwrap_or_default()
             .to_str()
             .unwrap_or("output");
-        format!("{}.model", base)
+        format!("{base}.model")
     };
 
     // Load problem
     let problem = load_problem(Path::new(input_file)).unwrap_or_else(|e| {
-        eprintln!("can't open input file {}: {}", input_file, e);
+        eprintln!("can't open input file {input_file}: {e}");
         process::exit(1);
     });
 
@@ -193,7 +206,7 @@ fn main() {
             .max()
             .unwrap_or(0);
         if max_index > 0 {
-            param.gamma = 1.0 / max_index as f64;
+            param.gamma = 1.0 / f64::from(max_index);
         }
     }
 
@@ -204,7 +217,7 @@ fn main() {
 
     // Validate
     if let Err(e) = check_parameter(&problem, &param) {
-        eprintln!("ERROR: {}", e);
+        eprintln!("ERROR: {e}");
         process::exit(1);
     }
 
@@ -213,7 +226,7 @@ fn main() {
     } else {
         let model = svm_train(&problem, &param);
         save_model(Path::new(&model_file), &model).unwrap_or_else(|e| {
-            eprintln!("can't save model to file {}: {}", model_file, e);
+            eprintln!("can't save model to file {model_file}: {e}");
             process::exit(1);
         });
     }

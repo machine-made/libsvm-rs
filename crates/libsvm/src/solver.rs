@@ -6,6 +6,15 @@
 //! This is a faithful translation of `Solver` and `Solver_NU` from
 //! LIBSVM's `svm.cpp` (lines 362–1265).
 
+#![expect(
+    clippy::indexing_slicing,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+
 use crate::qmatrix::QMatrix;
 
 const TAU: f64 = 1e-12;
@@ -65,7 +74,10 @@ pub struct Solver<'a> {
     eps: f64,
 }
 
-#[allow(clippy::needless_range_loop)]
+#[expect(
+    clippy::needless_range_loop,
+    reason = "Keep the C loop order for comparison with the original"
+)]
 impl<'a> Solver<'a> {
     /// Run the SMO solver.
     ///
@@ -79,7 +91,19 @@ impl<'a> Solver<'a> {
     /// * `cp`, `cn` — box constraints for positive/negative classes
     /// * `eps` — stopping tolerance
     /// * `shrinking` — whether to use the shrinking heuristic
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Keep the C solver arguments in one call"
+    )]
+    #[expect(
+        clippy::many_single_char_names,
+        reason = "The C solver uses these short names"
+    )]
+    #[expect(
+        clippy::single_match_else,
+        reason = "Keep the C branch order for comparison with the original"
+    )]
+    #[expect(clippy::too_many_lines, reason = "Keep the source loop in one place")]
     pub fn solve(
         variant: SolverVariant,
         l: usize,
@@ -131,12 +155,12 @@ impl<'a> Solver<'a> {
                 let alpha_i = solver.alpha[i];
                 let q_i = solver.q.get_q(i, l).to_vec();
                 for j in 0..l {
-                    solver.g[j] += alpha_i * q_i[j] as f64;
+                    solver.g[j] += alpha_i * f64::from(q_i[j]);
                 }
                 if solver.is_upper_bound(i) {
                     let c_i = solver.get_c(i);
                     for j in 0..l {
-                        solver.g_bar[j] += c_i * q_i[j] as f64;
+                        solver.g_bar[j] += c_i * f64::from(q_i[j]);
                     }
                 }
             }
@@ -216,7 +240,7 @@ impl<'a> Solver<'a> {
             r,
         };
 
-        crate::info(&format!("optimization finished, #iter = {}\n", iter));
+        crate::info(&format!("optimization finished, #iter = {iter}\n"));
 
         si
     }
@@ -225,11 +249,7 @@ impl<'a> Solver<'a> {
 
     #[inline]
     fn get_c(&self, i: usize) -> f64 {
-        if self.y[i] > 0 {
-            self.cp
-        } else {
-            self.cn
-        }
+        if self.y[i] > 0 { self.cp } else { self.cn }
     }
 
     #[inline]
@@ -298,7 +318,7 @@ impl<'a> Solver<'a> {
                 let q_i = self.q.get_q(i, active_size).to_vec();
                 for j in 0..active_size {
                     if self.is_free(j) {
-                        self.g[i] += self.alpha[j] * q_i[j] as f64;
+                        self.g[i] += self.alpha[j] * f64::from(q_i[j]);
                     }
                 }
             }
@@ -308,7 +328,7 @@ impl<'a> Solver<'a> {
                     let q_i = self.q.get_q(i, l).to_vec();
                     let alpha_i = self.alpha[i];
                     for j in active_size..l {
-                        self.g[j] += alpha_i * q_i[j] as f64;
+                        self.g[j] += alpha_i * f64::from(q_i[j]);
                     }
                 }
             }
@@ -325,6 +345,10 @@ impl<'a> Solver<'a> {
         }
     }
 
+    #[expect(
+        clippy::similar_names,
+        reason = "Keep the distinct C names for comparison with LIBSVM"
+    )]
     fn select_working_set_standard(&mut self) -> Option<(usize, usize)> {
         let mut gmax = -INF;
         let mut gmax2 = -INF;
@@ -354,7 +378,7 @@ impl<'a> Solver<'a> {
         // Second pass: find j (minimizes objective decrease)
         // Reuse `y`/`g`/`status` sliced to `n`; index values are < n.
         let qd_i = self.qd[i];
-        let yi = y[i] as f64;
+        let yi = f64::from(y[i]);
         for j in 0..n {
             if y[j] == 1 {
                 if status[j] != AlphaStatus::LowerBound {
@@ -363,7 +387,7 @@ impl<'a> Solver<'a> {
                         gmax2 = g[j];
                     }
                     if grad_diff > 0.0 {
-                        let quad_coef = qd_i + self.qd[j] - 2.0 * yi * q_i[j] as f64;
+                        let quad_coef = qd_i + self.qd[j] - 2.0 * yi * f64::from(q_i[j]);
                         let obj_diff = if quad_coef > 0.0 {
                             -(grad_diff * grad_diff) / quad_coef
                         } else {
@@ -381,7 +405,7 @@ impl<'a> Solver<'a> {
                     gmax2 = -g[j];
                 }
                 if grad_diff > 0.0 {
-                    let quad_coef = qd_i + self.qd[j] + 2.0 * yi * q_i[j] as f64;
+                    let quad_coef = qd_i + self.qd[j] + 2.0 * yi * f64::from(q_i[j]);
                     let obj_diff = if quad_coef > 0.0 {
                         -(grad_diff * grad_diff) / quad_coef
                     } else {
@@ -402,6 +426,10 @@ impl<'a> Solver<'a> {
         Some((i, gmin_idx?))
     }
 
+    #[expect(
+        clippy::similar_names,
+        reason = "Keep the distinct C names for comparison with LIBSVM"
+    )]
     fn select_working_set_nu(&mut self) -> Option<(usize, usize)> {
         let mut gmaxp = -INF;
         let mut gmaxp2 = -INF;
@@ -450,7 +478,7 @@ impl<'a> Solver<'a> {
                     }
                     if grad_diff > 0.0 {
                         if let (Some(ip), Some(q_ip)) = (ip, q_ip.as_ref()) {
-                            let quad_coef = self.qd[ip] + self.qd[j] - 2.0 * q_ip[j] as f64;
+                            let quad_coef = self.qd[ip] + self.qd[j] - 2.0 * f64::from(q_ip[j]);
                             let obj_diff = if quad_coef > 0.0 {
                                 -(grad_diff * grad_diff) / quad_coef
                             } else {
@@ -470,7 +498,7 @@ impl<'a> Solver<'a> {
                 }
                 if grad_diff > 0.0 {
                     if let (Some(in_), Some(q_in)) = (in_, q_in.as_ref()) {
-                        let quad_coef = self.qd[in_] + self.qd[j] - 2.0 * q_in[j] as f64;
+                        let quad_coef = self.qd[in_] + self.qd[j] - 2.0 * f64::from(q_in[j]);
                         let obj_diff = if quad_coef > 0.0 {
                             -(grad_diff * grad_diff) / quad_coef
                         } else {
@@ -501,6 +529,10 @@ impl<'a> Solver<'a> {
 
     // ─── Alpha pair update ──────────────────────────────────────────
 
+    #[expect(
+        clippy::if_not_else,
+        reason = "Keep the C branch order for comparison with the original"
+    )]
     fn update_alpha_pair(&mut self, i: usize, j: usize) {
         let active_size = self.active_size;
         let q_i = self.q.get_q(i, active_size).to_vec();
@@ -513,7 +545,7 @@ impl<'a> Solver<'a> {
         let old_alpha_j = self.alpha[j];
 
         if self.y[i] != self.y[j] {
-            let mut quad_coef = self.qd[i] + self.qd[j] + 2.0 * q_i[j] as f64;
+            let mut quad_coef = self.qd[i] + self.qd[j] + 2.0 * f64::from(q_i[j]);
             if quad_coef <= 0.0 {
                 quad_coef = TAU;
             }
@@ -541,7 +573,7 @@ impl<'a> Solver<'a> {
                 self.alpha[i] = c_j + diff;
             }
         } else {
-            let mut quad_coef = self.qd[i] + self.qd[j] - 2.0 * q_i[j] as f64;
+            let mut quad_coef = self.qd[i] + self.qd[j] - 2.0 * f64::from(q_i[j]);
             if quad_coef <= 0.0 {
                 quad_coef = TAU;
             }
@@ -577,7 +609,7 @@ impl<'a> Solver<'a> {
         // Update gradient G (sliced so `k < active_size` proves in-bounds)
         let g = &mut self.g[..active_size];
         for k in 0..active_size {
-            g[k] += q_i[k] as f64 * delta_alpha_i + q_j[k] as f64 * delta_alpha_j;
+            g[k] += f64::from(q_i[k]) * delta_alpha_i + f64::from(q_j[k]) * delta_alpha_j;
         }
 
         // Update alpha_status and G_bar
@@ -592,11 +624,11 @@ impl<'a> Solver<'a> {
             let q_i_full = self.q.get_q(i, l).to_vec();
             if ui {
                 for k in 0..l {
-                    self.g_bar[k] -= c_i * q_i_full[k] as f64;
+                    self.g_bar[k] -= c_i * f64::from(q_i_full[k]);
                 }
             } else {
                 for k in 0..l {
-                    self.g_bar[k] += c_i * q_i_full[k] as f64;
+                    self.g_bar[k] += c_i * f64::from(q_i_full[k]);
                 }
             }
         }
@@ -605,11 +637,11 @@ impl<'a> Solver<'a> {
             let q_j_full = self.q.get_q(j, l).to_vec();
             if uj {
                 for k in 0..l {
-                    self.g_bar[k] -= c_j * q_j_full[k] as f64;
+                    self.g_bar[k] -= c_j * f64::from(q_j_full[k]);
                 }
             } else {
                 for k in 0..l {
-                    self.g_bar[k] += c_j * q_j_full[k] as f64;
+                    self.g_bar[k] += c_j * f64::from(q_j_full[k]);
                 }
             }
         }
@@ -762,6 +794,10 @@ impl<'a> Solver<'a> {
         }
     }
 
+    #[expect(
+        clippy::manual_midpoint,
+        reason = "Keep the C midpoint arithmetic and operation order"
+    )]
     fn calculate_rho_standard(&self) -> f64 {
         let mut nr_free = 0;
         let mut ub = INF;
@@ -769,7 +805,7 @@ impl<'a> Solver<'a> {
         let mut sum_free = 0.0;
 
         for i in 0..self.active_size {
-            let yg = self.y[i] as f64 * self.g[i];
+            let yg = f64::from(self.y[i]) * self.g[i];
 
             if self.is_upper_bound(i) {
                 if self.y[i] == -1 {
@@ -790,12 +826,16 @@ impl<'a> Solver<'a> {
         }
 
         if nr_free > 0 {
-            sum_free / nr_free as f64
+            sum_free / f64::from(nr_free)
         } else {
             (ub + lb) / 2.0
         }
     }
 
+    #[expect(
+        clippy::manual_midpoint,
+        reason = "Keep the C midpoint arithmetic and operation order"
+    )]
     fn calculate_rho_nu(&self) -> (f64, f64) {
         let mut nr_free1 = 0;
         let mut nr_free2 = 0;
@@ -827,13 +867,13 @@ impl<'a> Solver<'a> {
         }
 
         let r1 = if nr_free1 > 0 {
-            sum_free1 / nr_free1 as f64
+            sum_free1 / f64::from(nr_free1)
         } else {
             (ub1 + lb1) / 2.0
         };
 
         let r2 = if nr_free2 > 0 {
-            sum_free2 / nr_free2 as f64
+            sum_free2 / f64::from(nr_free2)
         } else {
             (ub2 + lb2) / 2.0
         };

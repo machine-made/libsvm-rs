@@ -4,6 +4,15 @@
 //! - Standalone `k_function` for prediction (operates on sparse node slices)
 //! - `Kernel` struct for training (precomputes x_square for RBF, stores refs)
 
+#![expect(
+    clippy::indexing_slicing,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+
 use crate::types::{KernelType, SvmNode, SvmParameter};
 
 // ─── Integer power (matches LIBSVM's powi) ─────────────────────────
@@ -13,6 +22,7 @@ use crate::types::{KernelType, SvmNode, SvmParameter};
 /// For negative `times`, returns 1.0 (same as the C code, which only
 /// iterates while `t > 0`).
 #[inline]
+#[must_use]
 pub fn powi(base: f64, times: i32) -> f64 {
     let mut tmp = base;
     let mut ret = 1.0;
@@ -33,6 +43,11 @@ pub fn powi(base: f64, times: i32) -> f64 {
 ///
 /// This is the merge-based O(n+m) algorithm from LIBSVM.
 #[inline]
+#[must_use]
+#[expect(
+    clippy::comparison_chain,
+    reason = "Keep the C branch order for comparison with the original"
+)]
 pub fn dot(x: &[SvmNode], y: &[SvmNode]) -> f64 {
     let mut sum = 0.0;
     let mut ix = 0;
@@ -55,10 +70,14 @@ pub fn dot(x: &[SvmNode], y: &[SvmNode]) -> f64 {
     sum
 }
 
-/// Squared Euclidean distance for sparse vectors (used by RBF k_function).
+/// Squared Euclidean distance for sparse vectors (used by RBF `k_function`).
 ///
 /// Computes ‖x - y‖² without computing the difference vector.
 #[inline]
+#[expect(
+    clippy::comparison_chain,
+    reason = "Keep the C branch order for comparison with the original"
+)]
 fn sparse_sq_dist(x: &[SvmNode], y: &[SvmNode]) -> f64 {
     let mut sum = 0.0;
     let mut ix = 0;
@@ -95,6 +114,15 @@ fn sparse_sq_dist(x: &[SvmNode], y: &[SvmNode]) -> f64 {
 ///
 /// This is the standalone version used during prediction. Matches
 /// LIBSVM's `Kernel::k_function`.
+#[must_use]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "C truncates the same values at these points"
+)]
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "C converts the same signed values at these points"
+)]
 pub fn k_function(x: &[SvmNode], y: &[SvmNode], param: &SvmParameter) -> f64 {
     match param.kernel_type {
         KernelType::Linear => dot(x, y),
@@ -129,6 +157,7 @@ pub fn k_function(x: &[SvmNode], y: &[SvmNode], param: &SvmParameter) -> f64 {
 /// The `kernel_function` method pointer pattern from C++ is replaced
 /// by a match on `kernel_type` — the branch predictor handles this
 /// efficiently since the type doesn't change during training.
+#[expect(clippy::struct_field_names, reason = "Keep the C kernel field names")]
 pub struct Kernel<'a> {
     x: Vec<&'a [SvmNode]>,
     x_square: Option<Vec<f64>>,
@@ -141,7 +170,7 @@ pub struct Kernel<'a> {
 impl<'a> Kernel<'a> {
     /// Create a new kernel evaluator for the given dataset and parameters.
     pub fn new(x: &'a [Vec<SvmNode>], param: &SvmParameter) -> Self {
-        let x_refs: Vec<&'a [SvmNode]> = x.iter().map(|xi| xi.as_slice()).collect();
+        let x_refs: Vec<&'a [SvmNode]> = x.iter().map(std::vec::Vec::as_slice).collect();
         let x_square = if param.kernel_type == KernelType::Rbf {
             Some(x_refs.iter().map(|xi| dot(xi, xi)).collect())
         } else {
@@ -160,6 +189,15 @@ impl<'a> Kernel<'a> {
 
     /// Evaluate K(x\[i\], x\[j\]) using precomputed data where possible.
     #[inline]
+    #[must_use]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "C truncates the same values at these points"
+    )]
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "C converts the same signed values at these points"
+    )]
     pub fn evaluate(&self, i: usize, j: usize) -> f64 {
         let xi = self.x[i];
         let xj = self.x[j];
@@ -188,7 +226,7 @@ impl<'a> Kernel<'a> {
 
     /// Swap data-point references and precomputed squares at positions i and j.
     ///
-    /// Used by QMatrix implementations during solver shrinking.
+    /// Used by `QMatrix` implementations during solver shrinking.
     pub fn swap_index(&mut self, i: usize, j: usize) {
         self.x.swap(i, j);
         if let Some(ref mut sq) = self.x_square {
@@ -337,11 +375,7 @@ mod tests {
                 let via_func = k_function(&data[i], &data[j], &param);
                 assert!(
                     (via_struct - via_func).abs() < 1e-15,
-                    "mismatch at ({},{}): {} vs {}",
-                    i,
-                    j,
-                    via_struct,
-                    via_func
+                    "mismatch at ({i},{j}): {via_struct} vs {via_func}"
                 );
             }
         }

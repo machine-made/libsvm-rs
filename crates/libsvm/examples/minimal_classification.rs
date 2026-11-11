@@ -1,11 +1,14 @@
 //! Minimal self-contained binary classification example.
 //!
 //! Run:
-//!   cargo run -p libsvm-rs --example minimal_classification
+//!
+//! ```sh
+//! cargo run -p libsvm-rs --example minimal_classification
+//! ```
 
 use libsvm_rs::predict::predict;
 use libsvm_rs::train::svm_train;
-use libsvm_rs::{set_quiet, KernelType, SvmNode, SvmParameter, SvmProblem, SvmType};
+use libsvm_rs::{KernelType, SvmNode, SvmParameter, SvmProblem, SvmType, set_quiet};
 
 fn point(x1: f64, x2: f64) -> Vec<SvmNode> {
     vec![
@@ -20,6 +23,10 @@ fn point(x1: f64, x2: f64) -> Vec<SvmNode> {
     ]
 }
 
+#[expect(
+    clippy::float_cmp,
+    reason = "Predicted labels are compared with class labels copied from the input"
+)]
 fn main() {
     set_quiet(true);
 

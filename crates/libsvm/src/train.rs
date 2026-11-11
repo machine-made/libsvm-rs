@@ -3,9 +3,25 @@
 //! Provides `svm_train` which produces an `SvmModel` from an `SvmProblem`
 //! and `SvmParameter`. Matches the original LIBSVM's `svm_train` function.
 
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "Checked access is not yet done in this module; remove this line when it is"
+    )
+)]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+
 use crate::qmatrix::{OneClassQ, SvcQ, SvrQ};
 use crate::solver::{SolutionInfo, Solver, SolverVariant};
-use crate::types::*;
+use crate::types::{SvmModel, SvmNode, SvmParameter, SvmProblem, SvmType};
 use crate::util::group_classes;
 
 /// Internal decision function result from one binary sub-problem.
@@ -23,6 +39,10 @@ fn sign_labels(labels: &[f64]) -> Vec<i8> {
 
 // ─── Solve dispatchers ──────────────────────────────────────────────
 
+#[expect(
+    clippy::many_single_char_names,
+    reason = "The C solver uses these short names"
+)]
 fn solve_c_svc(
     x: &[Vec<SvmNode>],
     labels: &[f64],
@@ -51,12 +71,20 @@ fn solve_c_svc(
 
     // Multiply alpha by y to get signed coefficients
     for i in 0..l {
-        alpha[i] *= y[i] as f64;
+        alpha[i] *= f64::from(y[i]);
     }
 
     (alpha, si)
 }
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "C converts the same integer counts to double at these points"
+)]
+#[expect(
+    clippy::many_single_char_names,
+    reason = "The C solver uses these short names"
+)]
 fn solve_nu_svc(
     x: &[Vec<SvmNode>],
     labels: &[f64],
@@ -97,7 +125,7 @@ fn solve_nu_svc(
 
     let r = si.r;
     for i in 0..l {
-        alpha[i] *= y[i] as f64 / r;
+        alpha[i] *= f64::from(y[i]) / r;
     }
     si.rho /= r;
     si.obj /= r * r;
@@ -107,6 +135,22 @@ fn solve_nu_svc(
     (alpha, si)
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "C truncates the same values at these points"
+)]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "C converts the same integer counts to double at these points"
+)]
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "C converts the same signed values at these points"
+)]
+#[expect(
+    clippy::many_single_char_names,
+    reason = "The C solver uses these short names"
+)]
 fn solve_one_class(x: &[Vec<SvmNode>], param: &SvmParameter) -> (Vec<f64>, SolutionInfo) {
     let l = x.len();
 
@@ -178,6 +222,14 @@ fn solve_epsilon_svr(
     (alpha, si)
 }
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "C converts the same integer counts to double at these points"
+)]
+#[expect(
+    clippy::many_single_char_names,
+    reason = "The C solver uses these short names"
+)]
 fn solve_nu_svr(
     x: &[Vec<SvmNode>],
     labels: &[f64],
@@ -226,6 +278,10 @@ fn solve_nu_svr(
 
 // ─── svm_train_one ──────────────────────────────────────────────────
 
+#[expect(
+    clippy::similar_names,
+    reason = "Keep the distinct C names for comparison with LIBSVM"
+)]
 fn svm_train_one(
     x: &[Vec<SvmNode>],
     labels: &[f64],
@@ -260,7 +316,7 @@ fn svm_train_one(
             }
         })
         .count();
-    crate::info(&format!("nSV = {}, nBSV = {}\n", n_sv, n_bsv));
+    crate::info(&format!("nSV = {n_sv}, nBSV = {n_bsv}\n"));
 
     DecisionFunction { alpha, rho: si.rho }
 }
@@ -310,6 +366,7 @@ fn count_nonzero(nonzero: &[bool], start: usize, len: usize) -> usize {
 /// assert_eq!(model.svm_type(), SvmType::CSvc);
 /// # Ok::<(), libsvm_rs::SvmError>(())
 /// ```
+#[must_use]
 pub fn svm_train(problem: &SvmProblem, param: &SvmParameter) -> SvmModel {
     // Compute effective gamma if zero
     let mut param = param.clone();
@@ -322,7 +379,7 @@ pub fn svm_train(problem: &SvmProblem, param: &SvmParameter) -> SvmModel {
             .max()
             .unwrap_or(0);
         if max_index > 0 {
-            param.gamma = 1.0 / max_index as f64;
+            param.gamma = 1.0 / f64::from(max_index);
         }
     }
 
@@ -383,6 +440,7 @@ fn train_regression_or_one_class(problem: &SvmProblem, param: &SvmParameter) -> 
     model
 }
 
+#[expect(clippy::too_many_lines, reason = "Keep the source loop in one place")]
 fn train_classification(problem: &SvmProblem, param: &SvmParameter) -> SvmModel {
     let l = problem.instances.len();
     let group = group_classes(&problem.labels);
@@ -402,8 +460,7 @@ fn train_classification(problem: &SvmProblem, param: &SvmParameter) -> SvmModel 
             weighted_c[j] *= wval;
         } else {
             crate::info(&format!(
-                "WARNING: class label {} specified in weight is not found\n",
-                wlabel
+                "WARNING: class label {wlabel} specified in weight is not found\n"
             ));
         }
     }
@@ -479,7 +536,7 @@ fn train_classification(problem: &SvmProblem, param: &SvmParameter) -> SvmModel 
         *n_sv = n;
     }
 
-    crate::info(&format!("Total nSV = {}\n", total_sv));
+    crate::info(&format!("Total nSV = {total_sv}\n"));
 
     // Collect SVs and indices
     let mut model_sv = Vec::with_capacity(total_sv);
@@ -552,6 +609,7 @@ mod tests {
     use super::*;
     use crate::io::{load_model, load_problem};
     use crate::predict::predict;
+    use crate::types::KernelType;
     use std::path::PathBuf;
 
     fn data_dir() -> PathBuf {
@@ -562,6 +620,18 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_possible_wrap,
+        reason = "C converts the same values at these points"
+    )]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "C converts the same integer counts to double at these points"
+    )]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are compared with class labels and with the other model"
+    )]
     fn train_c_svc_heart_scale() {
         let problem = load_problem(&data_dir().join("heart_scale")).unwrap();
         let param = SvmParameter {
@@ -580,7 +650,7 @@ mod tests {
         // Check basic model structure
         assert_eq!(model.nr_class, 2);
         assert_eq!(model.label, vec![1, -1]);
-        assert!(!model.sv.is_empty(), "model has no support vectors");
+        assert_ne!(model.sv.len(), 0, "model has no support vectors");
 
         // Compare with C reference model
         let ref_model = load_model(&data_dir().join("heart_scale_ref.model")).unwrap();
@@ -610,7 +680,7 @@ mod tests {
                 correct += 1;
             }
         }
-        let accuracy = correct as f64 / problem.labels.len() as f64;
+        let accuracy = f64::from(correct) / problem.labels.len() as f64;
         assert!(
             accuracy > 0.85,
             "training accuracy {:.2}% too low",
@@ -628,12 +698,19 @@ mod tests {
         }
         assert!(
             mismatches <= 3,
-            "{} prediction mismatches between Rust-trained and C-trained models",
-            mismatches
+            "{mismatches} prediction mismatches between Rust-trained and C-trained models"
         );
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "C converts the same integer counts to double at these points"
+    )]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are compared with class labels copied from the input"
+    )]
     fn train_c_svc_iris_multiclass() {
         let problem = load_problem(&data_dir().join("iris.scale")).unwrap();
         let param = SvmParameter {
@@ -667,7 +744,7 @@ mod tests {
                 correct += 1;
             }
         }
-        let accuracy = correct as f64 / problem.labels.len() as f64;
+        let accuracy = f64::from(correct) / problem.labels.len() as f64;
         assert!(
             accuracy > 0.95,
             "iris accuracy {:.2}% too low (expected >95%)",
@@ -676,6 +753,14 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "C converts the same integer counts to double at these points"
+    )]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are compared with class labels copied from the input"
+    )]
     fn train_c_svc_precomputed_kernel() {
         let problem = load_problem(&data_dir().join("heart_scale.precomputed")).unwrap();
         let param = SvmParameter {
@@ -691,7 +776,7 @@ mod tests {
         let model = svm_train(&problem, &param);
 
         assert_eq!(model.nr_class, 2);
-        assert!(!model.sv.is_empty(), "model has no support vectors");
+        assert_ne!(model.sv.len(), 0, "model has no support vectors");
 
         // Sanity-check predictions on training data.
         let mut correct = 0;
@@ -701,7 +786,7 @@ mod tests {
                 correct += 1;
             }
         }
-        let accuracy = correct as f64 / problem.labels.len() as f64;
+        let accuracy = f64::from(correct) / problem.labels.len() as f64;
         assert!(
             accuracy > 0.70,
             "precomputed-kernel accuracy {:.2}% too low",
@@ -710,6 +795,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "C converts the same integer counts to double at these points"
+    )]
     fn train_one_class() {
         let problem = load_problem(&data_dir().join("heart_scale")).unwrap();
         let param = SvmParameter {
@@ -726,7 +815,7 @@ mod tests {
         let model = svm_train(&problem, &param);
 
         assert_eq!(model.nr_class, 2);
-        assert!(!model.sv.is_empty());
+        assert_ne!(model.sv.len(), 0);
         assert_eq!(model.rho.len(), 1);
 
         // Predict — most training points should be classified as +1 (inlier)
@@ -737,7 +826,7 @@ mod tests {
                 inliers += 1;
             }
         }
-        let inlier_rate = inliers as f64 / problem.instances.len() as f64;
+        let inlier_rate = f64::from(inliers) / problem.instances.len() as f64;
         // With nu=0.5, roughly half should be inliers (nu is upper bound on fraction of outliers)
         assert!(
             inlier_rate > 0.3 && inlier_rate < 0.9,
@@ -747,6 +836,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "C converts the same integer counts to double at these points"
+    )]
     fn train_epsilon_svr() {
         let problem = load_problem(&data_dir().join("housing_scale")).unwrap();
         let param = SvmParameter {
@@ -764,7 +857,7 @@ mod tests {
         let model = svm_train(&problem, &param);
 
         assert_eq!(model.nr_class, 2); // SVR always has nr_class=2
-        assert!(!model.sv.is_empty());
+        assert_ne!(model.sv.len(), 0);
 
         // Compute MSE on training set — should be reasonable
         let mut mse = 0.0;
@@ -777,10 +870,18 @@ mod tests {
 
         // MSE should be finite and reasonable
         assert!(mse.is_finite(), "MSE is not finite");
-        assert!(mse < 100.0, "MSE too high: {}", mse);
+        assert!(mse < 100.0, "MSE too high: {mse}");
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "C converts the same integer counts to double at these points"
+    )]
+    #[expect(
+        clippy::float_cmp,
+        reason = "Predicted labels are compared with class labels copied from the input"
+    )]
     fn train_nu_svc() {
         let problem = load_problem(&data_dir().join("heart_scale")).unwrap();
         let param = SvmParameter {
@@ -797,7 +898,7 @@ mod tests {
         let model = svm_train(&problem, &param);
 
         assert_eq!(model.nr_class, 2);
-        assert!(!model.sv.is_empty());
+        assert_ne!(model.sv.len(), 0);
 
         let mut correct = 0;
         for (i, instance) in problem.instances.iter().enumerate() {
@@ -806,7 +907,7 @@ mod tests {
                 correct += 1;
             }
         }
-        let accuracy = correct as f64 / problem.labels.len() as f64;
+        let accuracy = f64::from(correct) / problem.labels.len() as f64;
         assert!(
             accuracy > 0.70,
             "nu-SVC accuracy {:.2}% too low",
@@ -839,6 +940,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "C converts the same integer counts to double at these points"
+    )]
     fn train_nu_svr() {
         let problem = load_problem(&data_dir().join("housing_scale")).unwrap();
         let param = SvmParameter {
@@ -856,7 +961,7 @@ mod tests {
         let model = svm_train(&problem, &param);
 
         assert_eq!(model.nr_class, 2);
-        assert!(!model.sv.is_empty());
+        assert_ne!(model.sv.len(), 0);
 
         let mut mse = 0.0;
         for (i, instance) in problem.instances.iter().enumerate() {
@@ -867,6 +972,6 @@ mod tests {
         mse /= problem.instances.len() as f64;
 
         assert!(mse.is_finite(), "MSE is not finite");
-        assert!(mse < 200.0, "MSE too high: {}", mse);
+        assert!(mse < 200.0, "MSE too high: {mse}");
     }
 }

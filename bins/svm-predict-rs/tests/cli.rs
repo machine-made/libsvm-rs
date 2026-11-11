@@ -1,3 +1,7 @@
+//! Check svm-predict command-line flags.
+
+#![expect(clippy::unwrap_used, reason = "Tests unwrap a known-valid result")]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -207,7 +211,7 @@ fn random_flag_chunk_permutations_preserve_quiet_behavior() {
 
         let output_path = dir.join(format!("predictions-{i}.txt"));
         let mut command = Command::new(bin_path());
-        for chunk in chunks.iter() {
+        for chunk in &chunks {
             command.args(chunk.iter().copied());
         }
         let output = command
@@ -220,8 +224,7 @@ fn random_flag_chunk_permutations_preserve_quiet_behavior() {
 
         assert!(
             output.status.success(),
-            "iteration {i}, seed state {state}, stderr: {}",
-            stderr
+            "iteration {i}, seed state {state}, stderr: {stderr}"
         );
         assert!(output_path.exists());
         assert!(stderr.is_empty() || !stderr.contains("Accuracy ="));

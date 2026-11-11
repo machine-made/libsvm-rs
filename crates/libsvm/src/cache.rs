@@ -7,6 +7,15 @@
 //! This Rust version uses an index-based circular doubly-linked list for
 //! O(1) LRU operations, avoiding unsafe code while matching the semantics.
 
+#![expect(
+    clippy::indexing_slicing,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+
 /// Element type for cached kernel matrix rows. Matches LIBSVM's `Qfloat = float`.
 pub type Qfloat = f32;
 
@@ -44,6 +53,7 @@ pub struct Cache {
 
 impl Cache {
     /// Create a new cache for `l` data items with `size_bytes` of memory.
+    #[must_use]
     pub fn new(l: usize, size_bytes: usize) -> Self {
         // Convert bytes to Qfloat units
         let mut size = size_bytes / std::mem::size_of::<Qfloat>();
@@ -106,6 +116,10 @@ impl Cache {
     /// If `start >= request_len`, the entire row was already cached.
     ///
     /// The caller must fill `data[start..request_len]` with kernel values.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `index` is not less than the cache length.
     pub fn get_data(&mut self, index: usize, request_len: usize) -> (&mut [Qfloat], usize) {
         assert!(index < self.l);
 

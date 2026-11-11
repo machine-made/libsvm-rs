@@ -1,14 +1,26 @@
 //! Classic Iris workflow example using LIBSVM-format iris dataset.
 //!
 //! Run:
-//!   cargo run -p libsvm-rs --example iris_classification
+//!
+//! ```sh
+//! cargo run -p libsvm-rs --example iris_classification
+//! ```
+#![expect(clippy::expect_used, reason = "An example stops when a load fails")]
+#![expect(
+    clippy::cast_precision_loss,
+    reason = "An example prints accuracy as a percent"
+)]
 
 use libsvm_rs::io::load_problem;
 use libsvm_rs::predict::predict;
 use libsvm_rs::train::svm_train;
-use libsvm_rs::{set_quiet, KernelType, SvmParameter, SvmType};
+use libsvm_rs::{KernelType, SvmParameter, SvmType, set_quiet};
 use std::path::Path;
 
+#[expect(
+    clippy::float_cmp,
+    reason = "Predicted labels are compared with class labels copied from the input"
+)]
 fn main() {
     set_quiet(true);
 
