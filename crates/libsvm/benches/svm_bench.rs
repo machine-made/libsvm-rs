@@ -1,4 +1,8 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+//! Time training and prediction on fixed LIBSVM problems.
+
+#![expect(clippy::expect_used, reason = "A benchmark loads a fixed dataset")]
+
+use criterion::{Criterion, criterion_group, criterion_main};
 use libsvm_rs::io::load_problem;
 use libsvm_rs::predict::predict;
 use libsvm_rs::train::svm_train;
@@ -25,7 +29,7 @@ fn bench_train_rbf(c: &mut Criterion) {
     };
 
     c.bench_function("train_rbf", |b| {
-        b.iter(|| svm_train(black_box(&problem), black_box(&param)))
+        b.iter(|| svm_train(black_box(&problem), black_box(&param)));
     });
 }
 
@@ -39,7 +43,7 @@ fn bench_train_linear(c: &mut Criterion) {
     };
 
     c.bench_function("train_linear", |b| {
-        b.iter(|| svm_train(black_box(&problem), black_box(&param)))
+        b.iter(|| svm_train(black_box(&problem), black_box(&param)));
     });
 }
 
@@ -57,7 +61,7 @@ fn bench_predict(c: &mut Criterion) {
             for instance in &problem.instances {
                 let _ = predict(black_box(&model), black_box(instance));
             }
-        })
+        });
     });
 }
 
@@ -71,7 +75,7 @@ fn bench_train_with_probability(c: &mut Criterion) {
     };
 
     c.bench_function("train_with_probability", |b| {
-        b.iter(|| svm_train(black_box(&problem), black_box(&param)))
+        b.iter(|| svm_train(black_box(&problem), black_box(&param)));
     });
 }
 
@@ -92,7 +96,7 @@ fn bench_svr(c: &mut Criterion, name: &str, svm_type: SvmType, kernel_type: Kern
     };
 
     c.bench_function(name, |b| {
-        b.iter(|| svm_train(black_box(&problem), black_box(&param)))
+        b.iter(|| svm_train(black_box(&problem), black_box(&param)));
     });
 }
 

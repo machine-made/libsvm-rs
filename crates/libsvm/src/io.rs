@@ -16,13 +16,29 @@
 //! that a model is statistically meaningful, was trained from a particular
 //! dataset, or is cryptographically authentic.
 
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "Checked access is not yet done in this module; remove this line when it is"
+    )
+)]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+
 use std::io::{BufRead, Write};
 use std::path::Path;
 
 use crate::error::SvmError;
-use crate::types::*;
-use crate::util::parse_feature_index;
+use crate::types::{KernelType, SvmModel, SvmNode, SvmParameter, SvmProblem, SvmType};
 use crate::util::MAX_FEATURE_INDEX;
+use crate::util::parse_feature_index;
 
 // ─── C-compatible %g formatting ─────────────────────────────────────
 //
@@ -48,12 +64,24 @@ impl Gfmt {
 }
 
 impl fmt::Display for Gfmt {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "C truncates the same values at these points"
+    )]
+    #[expect(
+        clippy::cast_possible_wrap,
+        reason = "C converts the same values at these points"
+    )]
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "C converts the same signed values at these points"
+    )]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let v = self.value;
         let p = self.precision;
 
         if !v.is_finite() {
-            return write!(f, "{}", v); // inf, -inf, NaN
+            return write!(f, "{v}"); // inf, -inf, NaN
         }
 
         if v == 0.0 {
@@ -80,11 +108,11 @@ impl fmt::Display for Gfmt {
                 let exp_str = if exp_val < 0 {
                     format!("-{:02}", -exp_val)
                 } else {
-                    format!("+{:02}", exp_val)
+                    format!("+{exp_val:02}")
                 };
-                write!(f, "{}e{}", mantissa, exp_str)
+                write!(f, "{mantissa}e{exp_str}")
             } else {
-                write!(f, "{}", s)
+                write!(f, "{s}")
             }
         } else {
             // Use fixed notation. Number of decimal places = precision - (exp + 1)
@@ -93,9 +121,9 @@ impl fmt::Display for Gfmt {
             } else {
                 p + (-1 - exp) as usize
             };
-            let s = format!("{:.prec$}", v, prec = decimal_places);
+            let s = format!("{v:.decimal_places$}");
             let s = s.trim_end_matches('0').trim_end_matches('.');
-            write!(f, "{}", s)
+            write!(f, "{s}")
         }
     }
 }
@@ -111,11 +139,13 @@ fn fmt_8g(v: f64) -> Gfmt {
 }
 
 /// Format a float like C's `%g` (6 significant digits).
+#[must_use]
 pub fn format_g(v: f64) -> String {
     format!("{}", Gfmt::new(v, 6))
 }
 
 /// Format a float like C's `%.17g` (17 significant digits).
+#[must_use]
 pub fn format_17g(v: f64) -> String {
     format!("{}", Gfmt::new(v, 17))
 }
@@ -228,6 +258,7 @@ impl LoadOptions {
     /// unlimited caps removes the first line of defense against malformed
     /// or adversarial model / problem files. Module-level hard caps still
     /// apply to `nr_class` and `total_sv`.
+    #[must_use]
     pub fn trusted_input() -> Self {
         Self {
             max_bytes: u64::MAX,
@@ -282,7 +313,7 @@ fn read_line_capped(
         if new_bytes_read > max_bytes {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("input exceeds max_bytes limit ({})", max_bytes),
+                format!("input exceeds max_bytes limit ({max_bytes})"),
             ));
         }
 
@@ -297,7 +328,7 @@ fn read_line_capped(
         if content_bytes > per_line_raw_cap {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("line length exceeds max_line_len limit ({})", max_line_len),
+                format!("line length exceeds max_line_len limit ({max_line_len})"),
             ));
         }
 
@@ -357,6 +388,9 @@ fn read_line_capped(
 /// Linear in file size for parsing and `O(n · d)` memory where `n` is the
 /// number of instances and `d` is the average number of non-zero features
 /// per instance. No per-row allocation is driven by an untrusted header.
+/// # Errors
+///
+/// Returns [`SvmError`] when the file cannot be read or the text is invalid.
 pub fn load_problem(path: &Path) -> Result<SvmProblem, SvmError> {
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
@@ -367,6 +401,9 @@ pub fn load_problem(path: &Path) -> Result<SvmProblem, SvmError> {
 ///
 /// Uses [`LoadOptions::default`]. See [`load_problem`] for the validation
 /// contract and non-goals.
+/// # Errors
+///
+/// Returns [`SvmError`] when the text is invalid.
 pub fn load_problem_from_reader(reader: impl BufRead) -> Result<SvmProblem, SvmError> {
     load_problem_from_reader_with_options(reader, &LoadOptions::default())
 }
@@ -376,6 +413,9 @@ pub fn load_problem_from_reader(reader: impl BufRead) -> Result<SvmProblem, SvmE
 /// See [`LoadOptions`] for the meaning of each cap and for defaults tuned for
 /// untrusted input. This function has the same validation contract as
 /// [`load_problem`], with caller-supplied caps.
+/// # Errors
+///
+/// Returns [`SvmError`] when the text is invalid or a cap is exceeded.
 pub fn load_problem_from_reader_with_options(
     mut reader: impl BufRead,
     options: &LoadOptions,
@@ -407,7 +447,7 @@ pub fn load_problem_from_reader_with_options(
         })?;
         let label: f64 = label_str.parse().map_err(|_| SvmError::ParseError {
             line: line_num,
-            message: format!("invalid label: {}", label_str),
+            message: format!("invalid label: {label_str}"),
         })?;
 
         // Parse features (must be in ascending index order).
@@ -416,7 +456,7 @@ pub fn load_problem_from_reader_with_options(
         for token in parts {
             let (idx_str, val_str) = token.split_once(':').ok_or_else(|| SvmError::ParseError {
                 line: line_num,
-                message: format!("expected index:value, got: {}", token),
+                message: format!("expected index:value, got: {token}"),
             })?;
             let index: i32 =
                 parse_feature_index_problem_line(line_num, idx_str, options.max_feature_index)?;
@@ -425,14 +465,13 @@ pub fn load_problem_from_reader_with_options(
                 return Err(SvmError::ParseError {
                     line: line_num,
                     message: format!(
-                        "feature indices must be ascending: {} follows {}",
-                        index, prev_index
+                        "feature indices must be ascending: {index} follows {prev_index}"
                     ),
                 });
             }
             let value: f64 = val_str.parse().map_err(|_| SvmError::ParseError {
                 line: line_num,
-                message: format!("invalid value: {}", val_str),
+                message: format!("invalid value: {val_str}"),
             })?;
             prev_index = index;
             nodes.push(SvmNode { index, value });
@@ -451,6 +490,9 @@ const MAX_NR_CLASS: usize = 65535;
 const MAX_TOTAL_SV: usize = 10_000_000;
 
 /// Save an SVM model to a file in the original LIBSVM format.
+/// # Errors
+///
+/// Returns [`SvmError`] when the file cannot be created or written.
 pub fn save_model(path: &Path, model: &SvmModel) -> Result<(), SvmError> {
     let file = std::fs::File::create(path)?;
     let writer = std::io::BufWriter::new(file);
@@ -488,6 +530,13 @@ pub fn save_model(path: &Path, model: &SvmModel) -> Result<(), SvmError> {
 /// assert_eq!(loaded.svm_type(), SvmType::CSvc);
 /// # Ok::<(), libsvm_rs::SvmError>(())
 /// ```
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "C truncates the same values at these points"
+)]
+/// # Errors
+///
+/// Returns [`SvmError`] when the writer cannot accept the model text.
 pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), SvmError> {
     let param = &model.param;
 
@@ -511,7 +560,7 @@ pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), S
     }
 
     let nr_class = model.nr_class;
-    writeln!(w, "nr_class {}", nr_class)?;
+    writeln!(w, "nr_class {nr_class}")?;
     writeln!(w, "total_sv {}", model.sv.len())?;
 
     // rho
@@ -525,7 +574,7 @@ pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), S
     if !model.label.is_empty() {
         write!(w, "label")?;
         for l in &model.label {
-            write!(w, " {}", l)?;
+            write!(w, " {l}")?;
         }
         writeln!(w)?;
     }
@@ -561,7 +610,7 @@ pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), S
     if !model.n_sv.is_empty() {
         write!(w, "nr_sv")?;
         for n in &model.n_sv {
-            write!(w, " {}", n)?;
+            write!(w, " {n}")?;
         }
         writeln!(w)?;
     }
@@ -624,6 +673,9 @@ pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), S
 /// size. Downstream consumers of the returned [`SvmModel`] — notably
 /// `group_classes` and probability estimation — are `O(k²)` on `k =
 /// nr_class`, bounded by [`LoadOptions::max_nr_class`].
+/// # Errors
+///
+/// Returns [`SvmError`] when the file cannot be read or the text is invalid.
 pub fn load_model(path: &Path) -> Result<SvmModel, SvmError> {
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
@@ -662,6 +714,9 @@ pub fn load_model(path: &Path) -> Result<SvmModel, SvmError> {
 /// assert_eq!(loaded.sv.len(), model.sv.len());
 /// # Ok::<(), libsvm_rs::SvmError>(())
 /// ```
+/// # Errors
+///
+/// Returns [`SvmError`] when the text is invalid.
 pub fn load_model_from_reader(reader: impl BufRead) -> Result<SvmModel, SvmError> {
     load_model_from_reader_with_options(reader, &LoadOptions::default())
 }
@@ -671,6 +726,11 @@ pub fn load_model_from_reader(reader: impl BufRead) -> Result<SvmModel, SvmError
 /// See [`LoadOptions`] for the meaning of each cap and for defaults tuned for
 /// untrusted input. This function has the same validation contract as
 /// [`load_model`], with caller-supplied caps.
+///
+/// # Errors
+///
+/// Returns [`SvmError`] when the text is invalid or a cap is exceeded.
+#[expect(clippy::too_many_lines, reason = "Keep the source loop in one place")]
 pub fn load_model_from_reader_with_options(
     mut reader: impl BufRead,
     options: &LoadOptions,
@@ -715,32 +775,27 @@ pub fn load_model_from_reader_with_options(
 
         let mut parts = line.split_whitespace();
         let cmd = parts.next().ok_or_else(|| {
-            SvmError::ModelFormatError(format!("line {}: empty model header line", line_num))
+            SvmError::ModelFormatError(format!("line {line_num}: empty model header line"))
         })?;
 
         match cmd {
             "svm_type" => {
                 let val = parts.next().ok_or_else(|| {
-                    SvmError::ModelFormatError(format!("line {}: missing svm_type value", line_num))
+                    SvmError::ModelFormatError(format!("line {line_num}: missing svm_type value"))
                 })?;
                 param.svm_type = str_to_svm_type(val).ok_or_else(|| {
-                    SvmError::ModelFormatError(format!(
-                        "line {}: unknown svm_type: {}",
-                        line_num, val
-                    ))
+                    SvmError::ModelFormatError(format!("line {line_num}: unknown svm_type: {val}"))
                 })?;
             }
             "kernel_type" => {
                 let val = parts.next().ok_or_else(|| {
                     SvmError::ModelFormatError(format!(
-                        "line {}: missing kernel_type value",
-                        line_num
+                        "line {line_num}: missing kernel_type value"
                     ))
                 })?;
                 param.kernel_type = str_to_kernel_type(val).ok_or_else(|| {
                     SvmError::ModelFormatError(format!(
-                        "line {}: unknown kernel_type: {}",
-                        line_num, val
+                        "line {line_num}: unknown kernel_type: {val}"
                     ))
                 })?;
             }
@@ -748,8 +803,7 @@ pub fn load_model_from_reader_with_options(
                 let d: i32 = parse_single(&mut parts, line_num, "degree")?;
                 if d < 0 {
                     return Err(SvmError::ModelFormatError(format!(
-                        "line {}: degree must be >= 0, got {}",
-                        line_num, d
+                        "line {line_num}: degree must be >= 0, got {d}"
                     )));
                 }
                 param.degree = d;
@@ -758,8 +812,7 @@ pub fn load_model_from_reader_with_options(
                 let v: f64 = parse_single(&mut parts, line_num, "gamma")?;
                 if !v.is_finite() {
                     return Err(SvmError::ModelFormatError(format!(
-                        "line {}: gamma must be finite, got {}",
-                        line_num, v
+                        "line {line_num}: gamma must be finite, got {v}"
                     )));
                 }
                 param.gamma = v;
@@ -768,8 +821,7 @@ pub fn load_model_from_reader_with_options(
                 let v: f64 = parse_single(&mut parts, line_num, "coef0")?;
                 if !v.is_finite() {
                     return Err(SvmError::ModelFormatError(format!(
-                        "line {}: coef0 must be finite, got {}",
-                        line_num, v
+                        "line {line_num}: coef0 must be finite, got {v}"
                     )));
                 }
                 param.coef0 = v;
@@ -778,8 +830,7 @@ pub fn load_model_from_reader_with_options(
                 nr_class = parse_single(&mut parts, line_num, "nr_class")?;
                 if nr_class > nr_class_cap {
                     return Err(SvmError::ModelFormatError(format!(
-                        "line {}: nr_class exceeds limit ({})",
-                        line_num, nr_class_cap
+                        "line {line_num}: nr_class exceeds limit ({nr_class_cap})"
                     )));
                 }
             }
@@ -787,8 +838,7 @@ pub fn load_model_from_reader_with_options(
                 total_sv = parse_single(&mut parts, line_num, "total_sv")?;
                 if total_sv > total_sv_cap {
                     return Err(SvmError::ModelFormatError(format!(
-                        "line {}: total_sv exceeds limit ({})",
-                        line_num, total_sv_cap
+                        "line {line_num}: total_sv exceeds limit ({total_sv_cap})"
                     )));
                 }
             }
@@ -797,8 +847,7 @@ pub fn load_model_from_reader_with_options(
                 for &r in &rho {
                     if !r.is_finite() {
                         return Err(SvmError::ModelFormatError(format!(
-                            "line {}: rho must be finite, got {}",
-                            line_num, r
+                            "line {line_num}: rho must be finite, got {r}"
                         )));
                     }
                 }
@@ -820,8 +869,7 @@ pub fn load_model_from_reader_with_options(
                     .map(|s| {
                         s.parse::<usize>().map_err(|_| {
                             SvmError::ModelFormatError(format!(
-                                "line {}: invalid nr_sv value: {}",
-                                line_num, s
+                                "line {line_num}: invalid nr_sv value: {s}"
                             ))
                         })
                     })
@@ -830,8 +878,7 @@ pub fn load_model_from_reader_with_options(
             "SV" => break,
             _ => {
                 return Err(SvmError::ModelFormatError(format!(
-                    "line {}: unknown keyword: {}",
-                    line_num, cmd
+                    "line {line_num}: unknown keyword: {cmd}"
                 )));
             }
         }
@@ -887,18 +934,14 @@ pub fn load_model_from_reader_with_options(
         // First m tokens are sv_coef values
         for (k, coef_row) in sv_coef.iter_mut().enumerate() {
             let val_str = parts.next().ok_or_else(|| {
-                SvmError::ModelFormatError(format!("line {}: missing sv_coef[{}]", line_num, k))
+                SvmError::ModelFormatError(format!("line {line_num}: missing sv_coef[{k}]"))
             })?;
             let val: f64 = val_str.parse().map_err(|_| {
-                SvmError::ModelFormatError(format!(
-                    "line {}: invalid sv_coef: {}",
-                    line_num, val_str
-                ))
+                SvmError::ModelFormatError(format!("line {line_num}: invalid sv_coef: {val_str}"))
             })?;
             if !val.is_finite() {
                 return Err(SvmError::ModelFormatError(format!(
-                    "line {}: sv_coef must be finite, got {}",
-                    line_num, val_str
+                    "line {line_num}: sv_coef must be finite, got {val_str}"
                 )));
             }
             coef_row.push(val);
@@ -911,8 +954,7 @@ pub fn load_model_from_reader_with_options(
         for token in parts {
             let (idx_str, val_str) = token.split_once(':').ok_or_else(|| {
                 SvmError::ModelFormatError(format!(
-                    "line {}: expected index:value, got: {}",
-                    line_num, token
+                    "line {line_num}: expected index:value, got: {token}"
                 ))
             })?;
             let index: i32 =
@@ -920,18 +962,16 @@ pub fn load_model_from_reader_with_options(
 
             if !nodes.is_empty() && index <= prev_index {
                 return Err(SvmError::ModelFormatError(format!(
-                    "line {}: feature indices must be ascending: {} follows {}",
-                    line_num, index, prev_index
+                    "line {line_num}: feature indices must be ascending: {index} follows {prev_index}"
                 )));
             }
 
             let value: f64 = val_str.parse().map_err(|_| {
-                SvmError::ModelFormatError(format!("line {}: invalid value: {}", line_num, val_str))
+                SvmError::ModelFormatError(format!("line {line_num}: invalid value: {val_str}"))
             })?;
             if !value.is_finite() {
                 return Err(SvmError::ModelFormatError(format!(
-                    "line {}: feature value must be finite, got {}",
-                    line_num, val_str
+                    "line {line_num}: feature value must be finite, got {val_str}"
                 )));
             }
             prev_index = index;
@@ -962,6 +1002,7 @@ pub fn load_model_from_reader_with_options(
 }
 
 /// Validate the shared structural invariants required of a loaded/deserialized model.
+#[expect(clippy::too_many_lines, reason = "Keep the source loop in one place")]
 pub(crate) fn validate_model(model: &SvmModel) -> Result<(), SvmError> {
     if model.param.degree < 0 {
         return Err(SvmError::ModelFormatError(format!(
@@ -1024,8 +1065,7 @@ pub(crate) fn validate_model(model: &SvmModel) -> Result<(), SvmError> {
         for &coef in row {
             if !coef.is_finite() {
                 return Err(SvmError::ModelFormatError(format!(
-                    "sv_coef must be finite, got {}",
-                    coef
+                    "sv_coef must be finite, got {coef}"
                 )));
             }
         }
@@ -1034,8 +1074,7 @@ pub(crate) fn validate_model(model: &SvmModel) -> Result<(), SvmError> {
     for &r in &model.rho {
         if !r.is_finite() {
             return Err(SvmError::ModelFormatError(format!(
-                "rho must be finite, got {}",
-                r
+                "rho must be finite, got {r}"
             )));
         }
     }
@@ -1043,8 +1082,7 @@ pub(crate) fn validate_model(model: &SvmModel) -> Result<(), SvmError> {
         for &value in values {
             if !value.is_finite() {
                 return Err(SvmError::ModelFormatError(format!(
-                    "{} must be finite, got {}",
-                    name, value
+                    "{name} must be finite, got {value}"
                 )));
             }
         }
@@ -1052,8 +1090,7 @@ pub(crate) fn validate_model(model: &SvmModel) -> Result<(), SvmError> {
     for &value in &model.prob_density_marks {
         if !value.is_finite() {
             return Err(SvmError::ModelFormatError(format!(
-                "prob_density_marks must be finite, got {}",
-                value
+                "prob_density_marks must be finite, got {value}"
             )));
         }
     }
@@ -1092,8 +1129,7 @@ fn validate_precomputed_row(
 ) -> Result<(), SvmError> {
     let first = nodes.first().ok_or_else(|| {
         SvmError::ModelFormatError(format!(
-            "line {}: precomputed kernel {} is missing 0:sample_serial_number",
-            line_num, context
+            "line {line_num}: precomputed kernel {context} is missing 0:sample_serial_number"
         ))
     })?;
 
@@ -1103,8 +1139,7 @@ fn validate_precomputed_row(
         || first.value.fract() != 0.0
     {
         return Err(SvmError::ModelFormatError(format!(
-            "line {}: precomputed kernel {} must start with 0:sample_serial_number",
-            line_num, context
+            "line {line_num}: precomputed kernel {context} must start with 0:sample_serial_number"
         )));
     }
 
@@ -1132,7 +1167,10 @@ fn validate_precomputed_row(
 /// present, because minimal hand-written fixtures and some legacy writers
 /// omit them; the invariant "if present, must be consistent" is what matters
 /// for safety.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Keep the C solver arguments in one call"
+)]
 fn validate_model_header(
     svm_type: SvmType,
     nr_class: usize,
@@ -1154,8 +1192,7 @@ fn validate_model_header(
     // underflow-prone arithmetic elsewhere.
     if nr_class < 2 {
         return Err(SvmError::ModelFormatError(format!(
-            "nr_class must be >= 2, got {}",
-            nr_class
+            "nr_class must be >= 2, got {nr_class}"
         )));
     }
 
@@ -1219,8 +1256,7 @@ fn validate_model_header(
         }
         if sum != total_sv {
             return Err(SvmError::ModelFormatError(format!(
-                "sum of nr_sv entries ({}) does not match total_sv ({})",
-                sum, total_sv
+                "sum of nr_sv entries ({sum}) does not match total_sv ({total_sv})"
             )));
         }
     } else if !n_sv.is_empty() {
@@ -1283,7 +1319,7 @@ fn parse_feature_index_model_line(
     max_feature_index: i32,
 ) -> Result<i32, SvmError> {
     parse_feature_index(idx_str, max_feature_index)
-        .map_err(|msg| SvmError::ModelFormatError(format!("line {}: {}", line_num, msg)))
+        .map_err(|msg| SvmError::ModelFormatError(format!("line {line_num}: {msg}")))
 }
 
 fn parse_single<T: std::str::FromStr>(
@@ -1292,13 +1328,10 @@ fn parse_single<T: std::str::FromStr>(
     field: &str,
 ) -> Result<T, SvmError> {
     let val_str = parts.next().ok_or_else(|| {
-        SvmError::ModelFormatError(format!("line {}: missing {} value", line_num, field))
+        SvmError::ModelFormatError(format!("line {line_num}: missing {field} value"))
     })?;
     val_str.parse().map_err(|_| {
-        SvmError::ModelFormatError(format!(
-            "line {}: invalid {} value: {}",
-            line_num, field, val_str
-        ))
+        SvmError::ModelFormatError(format!("line {line_num}: invalid {field} value: {val_str}"))
     })
 }
 
@@ -1310,10 +1343,7 @@ fn parse_multiple<T: std::str::FromStr>(
     parts
         .map(|s| {
             s.parse::<T>().map_err(|_| {
-                SvmError::ModelFormatError(format!(
-                    "line {}: invalid {} value: {}",
-                    line_num, field, s
-                ))
+                SvmError::ModelFormatError(format!("line {line_num}: invalid {field} value: {s}"))
             })
         })
         .collect()
@@ -1324,6 +1354,7 @@ fn parse_multiple<T: std::str::FromStr>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write;
     use std::path::PathBuf;
 
     fn data_dir() -> PathBuf {
@@ -1345,13 +1376,17 @@ mod tests {
             problem.instances[0][0],
             SvmNode {
                 index: 1,
-                value: 0.708333
+                value: 0.708_333
             }
         );
         assert_eq!(problem.instances[0].len(), 12);
     }
 
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "C truncates the same values at these points"
+    )]
     fn parse_iris() {
         let path = data_dir().join("iris.scale");
         let problem = load_problem(&path).unwrap();
@@ -1384,7 +1419,7 @@ mod tests {
         let result = load_problem_from_reader(&input[..]);
         assert!(result.is_err());
         let msg = format!("{}", result.unwrap_err());
-        assert!(msg.contains("ascending"), "error: {}", msg);
+        assert!(msg.contains("ascending"), "error: {msg}");
     }
 
     #[test]
@@ -1402,7 +1437,10 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::excessive_precision)]
+    #[expect(
+        clippy::excessive_precision,
+        reason = "Keep the exact LIBSVM decimal from the C test"
+    )]
     fn load_c_trained_model() {
         // Load a model produced by the original C LIBSVM svm-train
         let path = data_dir().join("heart_scale.model");
@@ -1410,11 +1448,11 @@ mod tests {
         assert_eq!(model.nr_class, 2);
         assert_eq!(model.param.svm_type, SvmType::CSvc);
         assert_eq!(model.param.kernel_type, KernelType::Rbf);
-        assert!((model.param.gamma - 0.076923076923076927).abs() < 1e-15);
+        assert!((model.param.gamma - 0.076_923_076_923_076_927).abs() < 1e-15);
         assert_eq!(model.sv.len(), 132);
         assert_eq!(model.label, vec![1, -1]);
         assert_eq!(model.n_sv, vec![64, 68]);
-        assert!((model.rho[0] - 0.42446205176771573).abs() < 1e-15);
+        assert!((model.rho[0] - 0.424_462_051_767_715_73).abs() < 1e-15);
         // sv_coef should have 1 row (nr_class - 1) with 132 entries
         assert_eq!(model.sv_coef.len(), 1);
         assert_eq!(model.sv_coef[0].len(), 132);
@@ -1454,34 +1492,44 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::excessive_precision)]
+    #[expect(
+        clippy::excessive_precision,
+        reason = "Keep the exact LIBSVM decimal from the C test"
+    )]
     fn gfmt_matches_c_printf() {
         // Reference values from C's printf("%.17g|%.8g\n", v, v)
         let cases: &[(f64, &str, &str)] = &[
             (0.5, "0.5", "0.5"),
             (-1.0, "-1", "-1"),
-            (0.123456789012345, "0.123456789012345", "0.12345679"),
-            (-0.987654321098765, "-0.98765432109876505", "-0.98765432"),
-            (0.42446200000000001, "0.42446200000000001", "0.424462"),
+            (0.123_456_789_012_345, "0.123456789012345", "0.12345679"),
+            (
+                -0.987_654_321_098_765,
+                "-0.98765432109876505",
+                "-0.98765432",
+            ),
+            (0.424_462_000_000_000_01, "0.42446200000000001", "0.424462"),
             (0.0, "0", "0"),
             (1e-5, "1.0000000000000001e-05", "1e-05"),
             (1e-4, "0.0001", "0.0001"),
             (1e20, "1e+20", "1e+20"),
             (-0.25, "-0.25", "-0.25"),
             (0.75, "0.75", "0.75"),
-            (0.708333, "0.70833299999999999", "0.708333"),
+            (0.708_333, "0.70833299999999999", "0.708333"),
             (1.0, "1", "1"),
         ];
         for &(v, expected_17g, expected_8g) in cases {
             let got_17 = format!("{}", fmt_17g(v));
             let got_8 = format!("{}", fmt_8g(v));
-            assert_eq!(got_17, expected_17g, "%.17g mismatch for {}", v);
-            assert_eq!(got_8, expected_8g, "%.8g mismatch for {}", v);
+            assert_eq!(got_17, expected_17g, "%.17g mismatch for {v}");
+            assert_eq!(got_8, expected_8g, "%.8g mismatch for {v}");
         }
     }
 
     #[test]
-    #[allow(clippy::excessive_precision)]
+    #[expect(
+        clippy::excessive_precision,
+        reason = "Keep the exact LIBSVM decimal from the C test"
+    )]
     fn model_roundtrip() {
         // Create a minimal model and verify save → load roundtrip
         let model = SvmModel {
@@ -1514,8 +1562,8 @@ mod tests {
                     },
                 ],
             ],
-            sv_coef: vec![vec![0.123456789012345, -0.987654321098765]],
-            rho: vec![0.42446200000000001],
+            sv_coef: vec![vec![0.123_456_789_012_345, -0.987_654_321_098_765]],
+            rho: vec![0.424_462_000_000_000_01],
             prob_a: vec![],
             prob_b: vec![],
             prob_density_marks: vec![],
@@ -1538,12 +1586,12 @@ mod tests {
         assert_eq!(loaded.rho.len(), model.rho.len());
         // Check rho within tolerance (roundtrip through text)
         for (a, b) in loaded.rho.iter().zip(model.rho.iter()) {
-            assert!((a - b).abs() < 1e-10, "rho mismatch: {} vs {}", a, b);
+            assert!((a - b).abs() < 1e-10, "rho mismatch: {a} vs {b}");
         }
         // Check sv_coef within tolerance
         for (row_a, row_b) in loaded.sv_coef.iter().zip(model.sv_coef.iter()) {
             for (a, b) in row_a.iter().zip(row_b.iter()) {
-                assert!((a - b).abs() < 1e-10, "sv_coef mismatch: {} vs {}", a, b);
+                assert!((a - b).abs() < 1e-10, "sv_coef mismatch: {a} vs {b}");
             }
         }
     }
@@ -1569,13 +1617,17 @@ mod tests {
         let input = b"1 10000001:1\n";
         let result = load_problem_from_reader(&input[..]);
         assert!(result.is_err());
-        assert!(format!("{}", result.unwrap_err()).contains("feature index 10000001 exceeds limit"));
+        assert!(
+            format!("{}", result.unwrap_err()).contains("feature index 10000001 exceeds limit")
+        );
 
         // Model file
         let input = b"svm_type c_svc\nkernel_type linear\nnr_class 2\ntotal_sv 1\nrho 0\nlabel 1 -1\nnr_sv 1 0\nSV\n0.1 10000001:1\n";
         let result = load_model_from_reader(&input[..]);
         assert!(result.is_err());
-        assert!(format!("{}", result.unwrap_err()).contains("feature index 10000001 exceeds limit"));
+        assert!(
+            format!("{}", result.unwrap_err()).contains("feature index 10000001 exceeds limit")
+        );
     }
 
     #[test]
@@ -1590,11 +1642,11 @@ mod tests {
     fn parse_error_missing_or_unknown_model_values() {
         let missing = b"svm_type\n";
         let err = load_model_from_reader(&missing[..]).unwrap_err();
-        assert!(format!("{}", err).contains("missing svm_type value"));
+        assert!(format!("{err}").contains("missing svm_type value"));
 
         let unknown = b"svm_type unknown_type\n";
         let err = load_model_from_reader(&unknown[..]).unwrap_err();
-        assert!(format!("{}", err).contains("unknown svm_type"));
+        assert!(format!("{err}").contains("unknown svm_type"));
     }
 
     #[test]
@@ -1609,7 +1661,7 @@ nr_sv a 1\n\
 SV\n\
 0.1 1:0.5\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
-        assert!(format!("{}", err).contains("invalid nr_sv value"));
+        assert!(format!("{err}").contains("invalid nr_sv value"));
     }
 
     #[test]
@@ -1624,7 +1676,7 @@ nr_sv 1 0\n\
 SV\n\
 1:0.5\n";
         let err = load_model_from_reader(&missing_coef[..]).unwrap_err();
-        assert!(format!("{}", err).contains("invalid sv_coef"));
+        assert!(format!("{err}").contains("invalid sv_coef"));
 
         let bad_feature = b"svm_type c_svc\n\
 kernel_type linear\n\
@@ -1636,14 +1688,14 @@ nr_sv 1 0\n\
 SV\n\
 0.1 bad\n";
         let err = load_model_from_reader(&bad_feature[..]).unwrap_err();
-        assert!(format!("{}", err).contains("expected index:value"));
+        assert!(format!("{err}").contains("expected index:value"));
     }
 
     #[test]
     fn parse_error_unexpected_eof_in_header_and_sv_section() {
         let eof_header = b"svm_type c_svc\n";
         let err = load_model_from_reader(&eof_header[..]).unwrap_err();
-        assert!(format!("{}", err).contains("unexpected end of file in header"));
+        assert!(format!("{err}").contains("unexpected end of file in header"));
 
         let eof_sv = b"svm_type c_svc\n\
 kernel_type linear\n\
@@ -1655,7 +1707,7 @@ nr_sv 1 1\n\
 SV\n\
 0.1 1:0.5\n";
         let err = load_model_from_reader(&eof_sv[..]).unwrap_err();
-        assert!(format!("{}", err).contains("unexpected end of file in SV section"));
+        assert!(format!("{err}").contains("unexpected end of file in SV section"));
     }
 
     #[test]
@@ -1672,9 +1724,8 @@ nr_sv 1 1 1\n\
 SV\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
         assert!(
-            format!("{}", err).contains("rho has 1 entries, expected 3"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("rho has 1 entries, expected 3"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1689,9 +1740,8 @@ rho 0 1\n\
 SV\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
         assert!(
-            format!("{}", err).contains("rho has 2 entries, expected 1"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("rho has 2 entries, expected 1"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1707,9 +1757,8 @@ label 1 -1\n\
 SV\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
         assert!(
-            format!("{}", err).contains("label is only valid for classification"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("label is only valid for classification"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1724,9 +1773,8 @@ label 1 -1\n\
 SV\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
         assert!(
-            format!("{}", err).contains("label has 2 entries, expected nr_class (3)"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("label has 2 entries, expected nr_class (3)"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1744,9 +1792,8 @@ nr_sv 1 2\n\
 SV\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
         assert!(
-            format!("{}", err).contains("sum of nr_sv entries (3) does not match total_sv (5)"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("sum of nr_sv entries (3) does not match total_sv (5)"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1762,9 +1809,8 @@ nr_sv 1 2\n\
 SV\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
         assert!(
-            format!("{}", err).contains("nr_sv has 2 entries, expected nr_class (3)"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("nr_sv has 2 entries, expected nr_class (3)"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1781,9 +1827,8 @@ probA 0.1 0.2\n\
 SV\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
         assert!(
-            format!("{}", err).contains("probA has 2 entries, expected 3"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("probA has 2 entries, expected 3"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1800,9 +1845,8 @@ prob_density_marks 0.1 0.2\n\
 SV\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
         assert!(
-            format!("{}", err).contains("prob_density_marks is only valid for one-class SVM"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("prob_density_marks is only valid for one-class SVM"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1816,9 +1860,8 @@ rho\n\
 SV\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
         assert!(
-            format!("{}", err).contains("nr_class must be >= 2, got 1"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("nr_class must be >= 2, got 1"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1835,9 +1878,8 @@ SV\n\
 0.1 3:0.5 1:0.3\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
         assert!(
-            format!("{}", err).contains("feature indices must be ascending"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("feature indices must be ascending"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1854,9 +1896,8 @@ SV\n\
 0.1\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
         assert!(
-            format!("{}", err).contains("missing 0:sample_serial_number"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("missing 0:sample_serial_number"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1873,9 +1914,8 @@ SV\n\
 0.1 1:0.5 1:0.3\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
         assert!(
-            format!("{}", err).contains("feature indices must be ascending"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("feature indices must be ascending"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1909,9 +1949,8 @@ SV\n\
         };
         let err = load_problem_from_reader_with_options(&input[..], &opts).unwrap_err();
         assert!(
-            format!("{}", err).contains("max_bytes"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("max_bytes"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1920,7 +1959,7 @@ SV\n\
         // Build a line of 200 chars; cap max_line_len at 50.
         let mut payload = String::from("+1 ");
         for i in 1..=50 {
-            payload.push_str(&format!("{}:0.1 ", i));
+            let _ = write!(payload, "{i}:0.1 ");
         }
         payload.push('\n');
         let opts = LoadOptions {
@@ -1929,9 +1968,8 @@ SV\n\
         };
         let err = load_problem_from_reader_with_options(payload.as_bytes(), &opts).unwrap_err();
         assert!(
-            format!("{}", err).contains("max_line_len"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("max_line_len"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1940,7 +1978,7 @@ SV\n\
         // A line whose content (excluding trailing newline) is exactly
         // max_line_len bytes must be accepted — the cap is inclusive.
         let line_content = "+1 1:0.5";
-        let payload = format!("{}\n", line_content);
+        let payload = format!("{line_content}\n");
         let opts = LoadOptions {
             max_line_len: line_content.len(),
             ..LoadOptions::default()
@@ -1954,7 +1992,7 @@ SV\n\
         // Same content length, but with \r\n. Total bytes on disk is
         // content_len + 2; the helper allows one byte of slack for the \r.
         let line_content = "+1 1:0.5";
-        let payload = format!("{}\r\n", line_content);
+        let payload = format!("{line_content}\r\n");
         let opts = LoadOptions {
             max_line_len: line_content.len(),
             ..LoadOptions::default()
@@ -1972,9 +2010,8 @@ SV\n\
         payload.extend_from_slice(b"\n");
         let err = load_problem_from_reader(payload.as_slice()).unwrap_err();
         assert!(
-            format!("{}", err).contains("NUL byte"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("NUL byte"),
+            "unexpected error: {err}"
         );
     }
 
@@ -1994,9 +2031,8 @@ SV\n";
         };
         let err = load_model_from_reader_with_options(&input[..], &opts).unwrap_err();
         assert!(
-            format!("{}", err).contains("nr_class exceeds limit (50)"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("nr_class exceeds limit (50)"),
+            "unexpected error: {err}"
         );
     }
 
@@ -2014,9 +2050,8 @@ SV\n";
         };
         let err = load_model_from_reader_with_options(&input[..], &opts).unwrap_err();
         assert!(
-            format!("{}", err).contains("total_sv exceeds limit (100)"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("total_sv exceeds limit (100)"),
+            "unexpected error: {err}"
         );
     }
 
@@ -2037,9 +2072,8 @@ SV\n",
         let opts = LoadOptions::trusted_input();
         let err = load_model_from_reader_with_options(huge_nr_class.as_bytes(), &opts).unwrap_err();
         assert!(
-            format!("{}", err).contains("nr_class exceeds limit"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("nr_class exceeds limit"),
+            "unexpected error: {err}"
         );
     }
 
@@ -2060,9 +2094,8 @@ SV\n\
         };
         let err = load_model_from_reader_with_options(&input[..], &opts).unwrap_err();
         assert!(
-            format!("{}", err).contains("feature index 50 exceeds limit (10)"),
-            "unexpected error: {}",
-            err
+            format!("{err}").contains("feature index 50 exceeds limit (10)"),
+            "unexpected error: {err}"
         );
     }
 
@@ -2122,8 +2155,8 @@ SV\n\
 
     // ─── F1: classification models must carry label + nr_sv ─────────────
 
-    /// A c_svc model that omits both `label` and `nr_sv` must return a
-    /// ParseError rather than panic in predict.rs.
+    /// A `c_svc` model that omits both `label` and `nr_sv` must return a
+    /// `ParseError` rather than panic in predict.rs.
     #[test]
     fn csvc_missing_label_and_nr_sv_returns_error_not_panic() {
         let input = b"svm_type c_svc\n\
@@ -2134,15 +2167,14 @@ rho 0\n\
 SV\n\
 1 1:1\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
-        let msg = format!("{}", err);
+        let msg = format!("{err}");
         assert!(
             msg.contains("label has 0 entries, expected nr_class (2)"),
-            "unexpected error: {}",
-            msg
+            "unexpected error: {msg}"
         );
     }
 
-    /// A c_svc model with `label` present but `nr_sv` absent must also fail.
+    /// A `c_svc` model with `label` present but `nr_sv` absent must also fail.
     #[test]
     fn csvc_label_present_nr_sv_absent_returns_error() {
         let input = b"svm_type c_svc\n\
@@ -2154,15 +2186,14 @@ label 1 -1\n\
 SV\n\
 1 1:1\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
-        let msg = format!("{}", err);
+        let msg = format!("{err}");
         assert!(
             msg.contains("nr_sv has 0 entries, expected nr_class (2)"),
-            "unexpected error: {}",
-            msg
+            "unexpected error: {msg}"
         );
     }
 
-    /// A valid one_class model with no label/nr_sv lines must still load Ok
+    /// A valid `one_class` model with no `label/nr_sv` lines must still load Ok
     /// (regression guard: the new classification-only requirement must not
     /// affect one-class models).
     #[test]
@@ -2184,7 +2215,7 @@ SV\n\
 
     // ─── F3: non-finite numeric fields must be rejected ──────────────────
 
-    /// A model with `rho inf` must fail with a ParseError.
+    /// A model with `rho inf` must fail with a `ParseError`.
     #[test]
     fn model_rho_inf_returns_error() {
         let input = b"svm_type c_svc\n\
@@ -2197,15 +2228,14 @@ nr_sv 1 0\n\
 SV\n\
 1 1:0.5\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
-        let msg = format!("{}", err);
+        let msg = format!("{err}");
         assert!(
             msg.contains("rho must be finite"),
-            "unexpected error: {}",
-            msg
+            "unexpected error: {msg}"
         );
     }
 
-    /// A model with `1:nan` in an SV feature must fail with a ParseError.
+    /// A model with `1:nan` in an SV feature must fail with a `ParseError`.
     #[test]
     fn model_sv_feature_nan_returns_error() {
         let input = b"svm_type c_svc\n\
@@ -2218,11 +2248,10 @@ nr_sv 1 0\n\
 SV\n\
 1 1:nan\n";
         let err = load_model_from_reader(&input[..]).unwrap_err();
-        let msg = format!("{}", err);
+        let msg = format!("{err}");
         assert!(
             msg.contains("feature value must be finite"),
-            "unexpected error: {}",
-            msg
+            "unexpected error: {msg}"
         );
     }
 }

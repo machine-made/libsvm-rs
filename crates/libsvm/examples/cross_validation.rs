@@ -1,8 +1,14 @@
 //! Simple grid search using 5-fold cross-validation.
+#![expect(clippy::expect_used, reason = "An example stops when a load fails")]
+#![expect(clippy::float_cmp, reason = "An example compares predicted labels")]
+#![expect(
+    clippy::cast_precision_loss,
+    reason = "An example prints accuracy as a percent"
+)]
 
 use libsvm_rs::cross_validation::svm_cross_validation;
 use libsvm_rs::io::load_problem;
-use libsvm_rs::{set_quiet, KernelType, SvmParameter, SvmType};
+use libsvm_rs::{KernelType, SvmParameter, SvmType, set_quiet};
 use std::path::Path;
 
 fn main() {
@@ -33,7 +39,7 @@ fn main() {
             let correct = target
                 .iter()
                 .zip(problem.labels.iter())
-                .filter(|(&p, &y)| p == y)
+                .filter(|&(&p, &y)| p == y)
                 .count();
             let acc = correct as f64 / problem.labels.len() as f64;
 

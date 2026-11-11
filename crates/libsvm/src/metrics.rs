@@ -1,6 +1,20 @@
 //! Lightweight scoring helpers for CLI outputs and test checks.
 
+#![expect(
+    clippy::float_cmp,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+
 /// Compute mean squared error and squared correlation coefficient.
+#[must_use]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "C converts the same integer counts to double at these points"
+)]
+#[expect(
+    clippy::similar_names,
+    reason = "Keep the distinct C names for comparison with LIBSVM"
+)]
 pub fn regression_metrics(predictions: &[f64], labels: &[f64]) -> (f64, f64) {
     let n = predictions.len();
     if n == 0 || n != labels.len() {
@@ -38,6 +52,11 @@ pub fn regression_metrics(predictions: &[f64], labels: &[f64]) -> (f64, f64) {
 }
 
 /// Compute classification accuracy in `[0, 100]` as percent.
+#[must_use]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "C converts the same integer counts to double at these points"
+)]
 pub fn accuracy_percentage(predictions: &[f64], labels: &[f64]) -> f64 {
     if predictions.is_empty() || predictions.len() != labels.len() {
         return 0.0;
@@ -46,7 +65,7 @@ pub fn accuracy_percentage(predictions: &[f64], labels: &[f64]) -> f64 {
     let correct = predictions
         .iter()
         .zip(labels.iter())
-        .filter(|(&pred, &label)| pred == label)
+        .filter(|&(&pred, &label)| pred == label)
         .count();
 
     100.0 * correct as f64 / labels.len() as f64
@@ -70,7 +89,7 @@ mod tests {
         let preds = vec![1.0, 2.0, 3.0];
         let labels = vec![5.0, 5.0, 5.0];
         let (mse, r2) = regression_metrics(&preds, &labels);
-        assert!((mse - 9.666666666666666).abs() < 1e-12);
+        assert!((mse - 9.666_666_666_666_666).abs() < 1e-12);
         assert_eq!(r2, 0.0);
     }
 
@@ -78,7 +97,7 @@ mod tests {
     fn accuracy_percentage_matches_simple_case() {
         let preds = vec![1.0, 2.0, 3.0];
         let labels = vec![1.0, 0.0, 3.0];
-        assert_eq!(accuracy_percentage(&preds, &labels), 66.66666666666667);
+        assert_eq!(accuracy_percentage(&preds, &labels), 66.666_666_666_666_67);
     }
 
     #[test]

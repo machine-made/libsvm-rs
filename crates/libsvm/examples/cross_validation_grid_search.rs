@@ -1,11 +1,17 @@
 //! Simple grid search over C and gamma using 5-fold cross-validation.
 //!
 //! Run:
-//!   cargo run -p libsvm-rs --example cross_validation_grid_search
+//!   cargo run -p libsvm-rs --example `cross_validation_grid_search`
+#![expect(clippy::expect_used, reason = "An example stops when a load fails")]
+#![expect(clippy::float_cmp, reason = "An example compares predicted labels")]
+#![expect(
+    clippy::cast_precision_loss,
+    reason = "An example prints accuracy as a percent"
+)]
 
 use libsvm_rs::cross_validation::svm_cross_validation;
 use libsvm_rs::io::load_problem;
-use libsvm_rs::{set_quiet, KernelType, SvmParameter, SvmType};
+use libsvm_rs::{KernelType, SvmParameter, SvmType, set_quiet};
 use std::path::Path;
 
 fn main() {

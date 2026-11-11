@@ -1,5 +1,21 @@
 //! Shared internal utilities for libsvm-rs.
 
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "Checked access is not yet done in this module; remove this line when it is"
+    )
+)]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+
 use std::sync::{Mutex, OnceLock};
 
 /// Maximum supported feature index.
@@ -20,6 +36,10 @@ pub(crate) struct GroupedClasses {
 /// - preserves insertion order for first-seen labels,
 /// - swaps two-class {-1,1} to {1,-1} canonical ordering,
 /// - returns per-class counts, start offsets, and a permutation of rows.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "C truncates the same values at these points"
+)]
 pub(crate) fn group_classes(labels: &[f64]) -> GroupedClasses {
     let l = labels.len();
     let mut label_list: Vec<i32> = Vec::new();
@@ -43,7 +63,7 @@ pub(crate) fn group_classes(labels: &[f64]) -> GroupedClasses {
     if nr_class == 2 && label_list[0] == -1 && label_list[1] == 1 {
         label_list.swap(0, 1);
         count.swap(0, 1);
-        for dl in data_label.iter_mut() {
+        for dl in &mut data_label {
             *dl ^= 1;
         }
     }
@@ -106,7 +126,7 @@ impl GlibcRandState {
         let mut state = [0u32; GLIBC_RAND_DEGREE];
         state[0] = seed;
         for i in 1..GLIBC_RAND_DEGREE {
-            state[i] = ((16_807u64 * state[i - 1] as u64) % 2_147_483_647) as u32;
+            state[i] = ((16_807u64 * u64::from(state[i - 1])) % 2_147_483_647) as u32;
         }
 
         let mut rng = Self {
@@ -139,7 +159,7 @@ fn glibc_rand_state() -> &'static Mutex<GlibcRandState> {
 pub(crate) fn c_rand() -> usize {
     glibc_rand_state()
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .next()
 }
 
@@ -175,15 +195,21 @@ pub(crate) fn shuffle_range(index: &mut [usize], start: usize, len: usize) {
 }
 
 /// Parse and validate a feature index according to the shared hard limit.
+#[expect(
+    clippy::if_not_else,
+    reason = "Keep the C branch order for comparison with the original"
+)]
+/// # Errors
+///
+/// Returns an error string when the index is not an integer in range.
 pub fn parse_feature_index(idx_str: &str, max_feature_index: i32) -> Result<i32, String> {
     let index = idx_str
         .parse::<i32>()
-        .map_err(|_| format!("invalid feature index: {}", idx_str))?;
+        .map_err(|_| format!("invalid feature index: {idx_str}"))?;
 
     if !(0..=max_feature_index).contains(&index) {
         Err(format!(
-            "feature index {} exceeds limit ({})",
-            index, max_feature_index
+            "feature index {index} exceeds limit ({max_feature_index})"
         ))
     } else {
         Ok(index)

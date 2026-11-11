@@ -39,3 +39,5 @@ examples/integrations/wasm_inference/output/*
 
 # supervisor-coder dispatch artifacts
 /.sc/
+.jac
+/AGENTS.md

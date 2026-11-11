@@ -106,7 +106,7 @@ pub fn set_quiet(quiet: bool) {
 /// Print an info message to stderr (suppressed in quiet mode).
 pub(crate) fn info(msg: &str) {
     if !QUIET_MODE.load(Ordering::Relaxed) && SUPPRESS_INFO_DEPTH.load(Ordering::Relaxed) == 0 {
-        eprint!("{}", msg);
+        eprint!("{msg}");
     }
 }
 
@@ -125,7 +125,7 @@ pub(crate) fn with_suppressed_info<T>(f: impl FnOnce() -> T) -> T {
     f()
 }
 
-/// Fluent builder for [`SvmParameter`](crate::SvmParameter) values.
+/// Fluent builder for [`SvmParameter`] values.
 pub mod builder;
 /// Kernel-row cache used by the SMO solver.
 pub mod cache;

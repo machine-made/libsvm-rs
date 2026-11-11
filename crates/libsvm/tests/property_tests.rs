@@ -4,6 +4,15 @@
 //! - Determinism: repeated predictions with same input produce identical results
 //! - Classification invariant: predictions are valid training labels
 //! - Cross-validation: outputs are finite and valid labels
+#![expect(clippy::expect_used, reason = "Tests unwrap a known-valid result")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "A property test indexes a generated case"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "A property test counts generated rows"
+)]
 
 use libsvm_rs::cross_validation::svm_cross_validation;
 use libsvm_rs::io::{
@@ -15,7 +24,7 @@ use libsvm_rs::types::{KernelType, SvmModel, SvmNode, SvmParameter, SvmProblem, 
 use proptest::prelude::*;
 use std::path::Path;
 
-/// Helper to load heart_scale dataset from the project data directory.
+/// Helper to load `heart_scale` dataset from the project data directory.
 fn load_heart_scale() -> SvmProblem {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/heart_scale");
     load_problem(Path::new(path)).expect("Failed to load heart_scale dataset")
@@ -23,7 +32,7 @@ fn load_heart_scale() -> SvmProblem {
 
 /// Helper to extract unique labels from a problem.
 fn unique_labels(prob: &SvmProblem) -> Vec<f64> {
-    let mut labels: Vec<f64> = prob.labels.to_vec();
+    let mut labels: Vec<f64> = prob.labels.clone();
     labels.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     labels.dedup();
     labels
@@ -188,14 +197,13 @@ fn kernel_deterministic() {
 
     assert_eq!(
         pred1, pred2,
-        "Predictions should be deterministic; got {} and {}",
-        pred1, pred2
+        "Predictions should be deterministic; got {pred1} and {pred2}"
     );
 }
 
 /// Test: Deterministic predictions on real data.
 ///
-/// Loads heart_scale dataset, trains a C-SVC model, and verifies that
+/// Loads `heart_scale` dataset, trains a C-SVC model, and verifies that
 /// predicting the same instances twice yields identical results.
 #[test]
 fn predict_deterministic() {
@@ -219,15 +227,14 @@ fn predict_deterministic() {
 
         assert_eq!(
             pred1, pred2,
-            "Prediction for instance {} should be deterministic; got {} and {}",
-            idx, pred1, pred2
+            "Prediction for instance {idx} should be deterministic; got {pred1} and {pred2}"
         );
     }
 }
 
 /// Test: Classification predictions are valid training labels.
 ///
-/// Trains a C-SVC model on heart_scale and verifies that predictions
+/// Trains a C-SVC model on `heart_scale` and verifies that predictions
 /// for all instances are one of the training labels.
 #[test]
 fn train_predict_labels_in_range() {
@@ -248,17 +255,14 @@ fn train_predict_labels_in_range() {
 
         assert!(
             valid_labels.contains(&pred),
-            "Instance {} prediction {} is not in training labels {:?}",
-            idx,
-            pred,
-            valid_labels
+            "Instance {idx} prediction {pred} is not in training labels {valid_labels:?}"
         );
     }
 }
 
 /// Test: Cross-validation results are valid.
 ///
-/// Runs 5-fold cross-validation on heart_scale and verifies that all
+/// Runs 5-fold cross-validation on `heart_scale` and verifies that all
 /// returned predictions are finite and valid training labels.
 #[test]
 fn cross_validation_results_valid() {
@@ -284,18 +288,13 @@ fn cross_validation_results_valid() {
         // Check finiteness
         assert!(
             target.is_finite(),
-            "CV target[{}] = {} is not finite",
-            idx,
-            target
+            "CV target[{idx}] = {target} is not finite"
         );
 
         // Check that it's a valid label
         assert!(
             valid_labels.contains(&target),
-            "CV target[{}] = {} is not in training labels {:?}",
-            idx,
-            target,
-            valid_labels
+            "CV target[{idx}] = {target} is not in training labels {valid_labels:?}"
         );
     }
 }

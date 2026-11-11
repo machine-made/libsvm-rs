@@ -4,6 +4,29 @@
 //! probability estimation, and density-based probability for one-class SVM.
 //! Matches the original LIBSVM's probability routines (svm.cpp:1714–2096).
 
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "Checked access is not yet done in this module; remove this line when it is"
+    )
+)]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::expect_used,
+        reason = "Checked access is not yet done in this module; remove this line when it is"
+    )
+)]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+
 use crate::predict::predict_values;
 use crate::train::svm_train;
 use crate::types::{SvmModel, SvmParameter, SvmProblem};
@@ -18,6 +41,11 @@ use rayon::prelude::*;
 /// Given decision values and labels (+1/−1), fits the sigmoid
 /// P(y=1|f) = 1/(1+exp(A*f+B)) using the algorithm of Lin, Lin &
 /// Weng (2007). Matches LIBSVM's `sigmoid_train`.
+#[must_use]
+#[expect(
+    clippy::many_single_char_names,
+    reason = "The C solver uses these short names"
+)]
 pub fn sigmoid_train(dec_values: &[f64], labels: &[f64]) -> (f64, f64) {
     let l = dec_values.len();
 
@@ -132,6 +160,7 @@ pub fn sigmoid_train(dec_values: &[f64], labels: &[f64]) -> (f64, f64) {
 ///
 /// Returns P(y=1|f) = 1/(1+exp(A*f+B)), branching on sign of A*f+B
 /// to avoid overflow. Matches LIBSVM's `sigmoid_predict`.
+#[must_use]
 pub fn sigmoid_predict(decision_value: f64, a: f64, b: f64) -> f64 {
     let f_apb = decision_value * a + b;
     if f_apb >= 0.0 {
@@ -150,7 +179,14 @@ pub fn sigmoid_predict(decision_value: f64, a: f64, b: f64) -> f64 {
 /// probabilities using the Wu-Lin-Weng iterative method.
 ///
 /// Matches LIBSVM's `multiclass_probability`.
-#[allow(clippy::needless_range_loop)]
+#[expect(
+    clippy::needless_range_loop,
+    reason = "Keep the C loop order for comparison with the original"
+)]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "C converts the same integer counts to double at these points"
+)]
 pub fn multiclass_probability(k: usize, r: &[Vec<f64>], p: &mut [f64]) {
     let max_iter = 100.max(k);
     let eps = 0.005 / k as f64;
@@ -264,7 +300,7 @@ fn evaluate_binary_svc_probability_fold(
                 let mut dv = [0.0];
                 predict_values(&submodel, &prob.instances[perm[j]], &mut dv);
                 // Sign correction: ensure +1/−1 ordering
-                dv[0] * submodel.label[0] as f64
+                dv[0] * f64::from(submodel.label[0])
             })
             .collect()
     }
@@ -277,6 +313,7 @@ fn evaluate_binary_svc_probability_fold(
 /// a sigmoid via `sigmoid_train`.
 ///
 /// Matches LIBSVM's `svm_binary_svc_probability`.
+#[must_use]
 pub fn svm_binary_svc_probability(
     prob: &SvmProblem,
     param: &SvmParameter,
@@ -339,6 +376,11 @@ pub fn svm_binary_svc_probability(
 /// probability estimate in (0, 1).
 ///
 /// Matches LIBSVM's `predict_one_class_probability`.
+#[must_use]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "C converts the same integer counts to double at these points"
+)]
 pub fn predict_one_class_probability(prob_density_marks: &[f64], dec_value: f64) -> f64 {
     let nr_marks = prob_density_marks.len();
     if nr_marks == 0 {
@@ -373,6 +415,10 @@ pub fn predict_one_class_probability(prob_density_marks: &[f64], dec_value: f64)
 /// negative decision values.
 ///
 /// Matches LIBSVM's `svm_one_class_probability`.
+#[expect(
+    clippy::manual_midpoint,
+    reason = "Keep the C midpoint arithmetic and operation order"
+)]
 pub fn svm_one_class_probability(prob: &SvmProblem, model: &SvmModel) -> Option<Vec<f64>> {
     let l = prob.labels.len();
     let mut dec_values = vec![0.0; l];
@@ -400,9 +446,8 @@ pub fn svm_one_class_probability(prob: &SvmProblem, model: &SvmModel) -> Option<
 
     if neg_counter < mid || pos_counter < mid {
         crate::info(&format!(
-            "WARNING: number of positive or negative decision values <{}; \
-             too few to do a probability estimation.\n",
-            mid
+            "WARNING: number of positive or negative decision values <{mid}; \
+             too few to do a probability estimation.\n"
         ));
         return None;
     }
@@ -434,6 +479,11 @@ pub fn svm_one_class_probability(prob: &SvmProblem, model: &SvmModel) -> Option<
 /// recomputes. Returns the final MAE (= σ of Laplace distribution).
 ///
 /// Matches LIBSVM's `svm_svr_probability`.
+#[must_use]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "C converts the same integer counts to double at these points"
+)]
 pub fn svm_svr_probability(prob: &SvmProblem, param: &SvmParameter) -> f64 {
     let l = prob.labels.len();
     let nr_fold = 5;
@@ -467,8 +517,7 @@ pub fn svm_svr_probability(prob: &SvmProblem, param: &SvmParameter) -> f64 {
 
     crate::info(&format!(
         "Prob. model for test data: target value = predicted value + z,\n\
-         z: Laplace distribution e^(-|z|/sigma)/(2sigma),sigma= {:.6}\n",
-        mae
+         z: Laplace distribution e^(-|z|/sigma)/(2sigma),sigma= {mae:.6}\n"
     ));
 
     mae
@@ -529,11 +578,10 @@ mod tests {
         let sum: f64 = p.iter().sum();
         assert!(
             (sum - 1.0).abs() < 1e-6,
-            "probabilities sum to {}, expected ~1.0",
-            sum
+            "probabilities sum to {sum}, expected ~1.0"
         );
         for &pi in &p {
-            assert!(pi > 0.0, "probability should be positive, got {}", pi);
+            assert!(pi > 0.0, "probability should be positive, got {pi}");
         }
     }
 

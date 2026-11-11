@@ -1,3 +1,12 @@
+//! Check svm-scale command-line flags.
+
+#![expect(clippy::unwrap_used, reason = "Tests unwrap a known-valid result")]
+#![expect(clippy::indexing_slicing, reason = "Tests unwrap a known-valid result")]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "Tests unwrap a known-valid result"
+)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -110,7 +119,7 @@ fn scaling_emits_non_empty_output() {
         String::from_utf8(output.stderr).unwrap()
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(!stdout.trim().is_empty());
+    assert_ne!(stdout.trim(), "");
 }
 
 #[test]
@@ -172,7 +181,7 @@ fn scaling_with_mixed_flag_order_is_stable() {
     );
     assert!(output_path.exists());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(!stdout.trim().is_empty());
+    assert_ne!(stdout.trim(), "");
 }
 
 #[test]
@@ -191,7 +200,7 @@ fn scaling_accepts_permuted_scale_flags() {
     for (i, order) in orders.iter().enumerate() {
         let scale_path = dir.join(format!("tiny-{i}.params"));
         let mut command = Command::new(bin_path());
-        for token in order.iter() {
+        for token in order {
             if *token == "-s" {
                 command.arg(token).arg(&scale_path);
             } else {
@@ -241,7 +250,7 @@ fn random_scale_flag_permutations_still_generate_output() {
 
         let output_path = dir.join(format!("tiny-fuzz-{i}.params"));
         let mut command = Command::new(bin_path());
-        for chunk in chunks.iter() {
+        for chunk in &chunks {
             if chunk[0] == "-s" {
                 command.arg("-s").arg(&output_path);
             } else {
@@ -256,6 +265,6 @@ fn random_scale_flag_permutations_still_generate_output() {
             String::from_utf8(output.stderr).unwrap()
         );
         assert!(output_path.exists());
-        assert!(!String::from_utf8(output.stdout).unwrap().is_empty());
+        assert_ne!(String::from_utf8(output.stdout).unwrap(), "");
     }
 }

@@ -9,3 +9,6 @@ publish = false
 
 [dependencies]
 libsvm-rs = { workspace = true }
+
+[lints]
+workspace = true

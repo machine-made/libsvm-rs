@@ -1,4 +1,4 @@
-pub fn xorshift64star(state: &mut u64) -> u64 {
+pub(crate) fn xorshift64star(state: &mut u64) -> u64 {
     let mut x = *state;
     x ^= x << 13;
     x ^= x >> 7;
@@ -7,7 +7,11 @@ pub fn xorshift64star(state: &mut u64) -> u64 {
     x
 }
 
-pub fn shuffle_flag_chunks<T>(chunks: &mut [Vec<T>], state: &mut u64) {
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "A test helper maps a 64-bit counter onto a slice index"
+)]
+pub(crate) fn shuffle_flag_chunks<T>(chunks: &mut [Vec<T>], state: &mut u64) {
     let len = chunks.len();
     if len <= 1 {
         return;

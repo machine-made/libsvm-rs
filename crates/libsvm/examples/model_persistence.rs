@@ -1,12 +1,17 @@
 //! Train, save, load, and predict with a persisted model.
 //!
 //! Run:
-//!   cargo run -p libsvm-rs --example model_persistence
+//!   cargo run -p libsvm-rs --example `model_persistence`
+#![expect(clippy::expect_used, reason = "An example stops when a load fails")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "An example indexes a fixed training row"
+)]
 
 use libsvm_rs::io::{load_model, load_problem, save_model};
 use libsvm_rs::predict::predict;
 use libsvm_rs::train::svm_train;
-use libsvm_rs::{set_quiet, KernelType, SvmParameter, SvmType};
+use libsvm_rs::{KernelType, SvmParameter, SvmType, set_quiet};
 use std::path::Path;
 
 fn main() {

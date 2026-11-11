@@ -6,6 +6,29 @@
 //! - One-class SVM: sign of decision value + optional density probability
 //! - Regression (ε-SVR, ν-SVR): continuous output
 
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "Checked access is not yet done in this module; remove this line when it is"
+    )
+)]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::float_cmp,
+        reason = "Checked access is not yet done in this module; remove this line when it is"
+    )
+)]
+
 use crate::kernel::k_function;
 use crate::probability::{multiclass_probability, predict_one_class_probability, sigmoid_predict};
 use crate::types::{SvmModel, SvmNode, SvmType};
@@ -30,11 +53,7 @@ pub fn predict_values(model: &SvmModel, x: &[SvmNode], dec_values: &mut [f64]) -
             dec_values[0] = sum;
 
             if model.param.svm_type == SvmType::OneClass {
-                if sum > 0.0 {
-                    1.0
-                } else {
-                    -1.0
-                }
+                if sum > 0.0 { 1.0 } else { -1.0 }
             } else {
                 sum
             }
@@ -93,11 +112,10 @@ pub fn predict_values(model: &SvmModel, x: &[SvmNode], dec_values: &mut [f64]) -
                 .iter()
                 .enumerate()
                 .max_by_key(|&(_, &v)| v)
-                .map(|(i, _)| i)
-                .unwrap_or(0);
+                .map_or(0, |(i, _)| i);
 
             let _ = l; // suppress unused warning
-            model.label[vote_max_idx] as f64
+            f64::from(model.label[vote_max_idx])
         }
     }
 }
@@ -130,6 +148,7 @@ pub fn predict_values(model: &SvmModel, x: &[SvmNode], dec_values: &mut [f64]) -
 /// assert_eq!(predict(&model, &[SvmNode { index: 1, value: 1.5 }]), 1.0);
 /// # Ok::<(), libsvm_rs::SvmError>(())
 /// ```
+#[must_use]
 pub fn predict(model: &SvmModel, x: &[SvmNode]) -> f64 {
     let n = match model.param.svm_type {
         SvmType::OneClass | SvmType::EpsilonSvr | SvmType::NuSvr => 1,
@@ -153,7 +172,11 @@ pub fn predict(model: &SvmModel, x: &[SvmNode]) -> f64 {
 /// - **SVR**: probability prediction is not supported (returns `None`).
 ///
 /// Matches LIBSVM's `svm_predict_probability`.
-#[allow(clippy::needless_range_loop)]
+#[expect(
+    clippy::needless_range_loop,
+    reason = "Keep the C loop order for comparison with the original"
+)]
+#[must_use]
 pub fn predict_probability(model: &SvmModel, x: &[SvmNode]) -> Option<(f64, Vec<f64>)> {
     match model.param.svm_type {
         SvmType::CSvc | SvmType::NuSvc if !model.prob_a.is_empty() && !model.prob_b.is_empty() => {
@@ -194,7 +217,7 @@ pub fn predict_probability(model: &SvmModel, x: &[SvmNode]) -> Option<(f64, Vec<
                 }
             }
 
-            Some((model.label[best] as f64, prob_estimates))
+            Some((f64::from(model.label[best]), prob_estimates))
         }
 
         SvmType::OneClass if !model.prob_density_marks.is_empty() => {
@@ -223,6 +246,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "C converts the same integer counts to double at these points"
+    )]
     fn predict_heart_scale() {
         // Load model trained by C LIBSVM and predict on training data
         let model = load_model(&data_dir().join("heart_scale.model")).unwrap();
@@ -236,7 +263,7 @@ mod tests {
             }
         }
 
-        let accuracy = correct as f64 / problem.labels.len() as f64;
+        let accuracy = f64::from(correct) / problem.labels.len() as f64;
         // C LIBSVM gets ~86.67% accuracy on training set with default params
         assert!(
             accuracy > 0.85,
@@ -276,7 +303,7 @@ mod tests {
         };
 
         let model = crate::train::svm_train(&problem, &param);
-        assert!(!model.prob_a.is_empty());
+        assert_ne!(model.prob_a.len(), 0);
 
         for instance in &problem.instances {
             let result = predict_probability(&model, instance);
@@ -285,13 +312,9 @@ mod tests {
             assert!(label == 1.0 || label == -1.0);
             assert_eq!(probs.len(), 2);
             let sum: f64 = probs.iter().sum();
-            assert!(
-                (sum - 1.0).abs() < 1e-6,
-                "probs sum to {}, expected 1.0",
-                sum
-            );
+            assert!((sum - 1.0).abs() < 1e-6, "probs sum to {sum}, expected 1.0");
             for &p in &probs {
-                assert!((0.0..=1.0).contains(&p), "prob {} out of [0,1]", p);
+                assert!((0.0..=1.0).contains(&p), "prob {p} out of [0,1]");
             }
         }
     }
@@ -321,11 +344,7 @@ mod tests {
             let (_label, probs) = result.unwrap();
             assert_eq!(probs.len(), 3);
             let sum: f64 = probs.iter().sum();
-            assert!(
-                (sum - 1.0).abs() < 1e-6,
-                "probs sum to {}, expected 1.0",
-                sum
-            );
+            assert!((sum - 1.0).abs() < 1e-6, "probs sum to {sum}, expected 1.0");
         }
     }
 
@@ -380,8 +399,7 @@ mod tests {
 
                 assert_eq!(
                     mismatches, 0,
-                    "{} predictions differ between Rust and C",
-                    mismatches
+                    "{mismatches} predictions differ between Rust and C"
                 );
 
                 // Clean up

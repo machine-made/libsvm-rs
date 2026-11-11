@@ -20,6 +20,14 @@
 //! # Ok::<(), libsvm_rs::SvmError>(())
 //! ```
 
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "Checked access is not yet done in this module; remove this line when it is"
+    )
+)]
+
 use crate::error::SvmError;
 use crate::types::{KernelType, SvmParameter, SvmType};
 
@@ -30,6 +38,7 @@ use crate::types::{KernelType, SvmParameter, SvmType};
 /// method; data-dependent validation remains the responsibility of
 /// [`crate::types::check_parameter`].
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct SvmParameterBuilder {
     param: SvmParameter,
 }
@@ -138,6 +147,11 @@ impl SvmParameterBuilder {
     /// This calls the existing [`SvmParameter::validate`] method and does not
     /// duplicate validation rules. Data-dependent checks stay in
     /// [`crate::types::check_parameter`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SvmError::InvalidParameter`] when a parameter fails
+    /// [`SvmParameter::validate`].
     pub fn build(self) -> Result<SvmParameter, SvmError> {
         self.param.validate()?;
         Ok(self.param)
@@ -157,7 +171,10 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::field_reassign_with_default)]
+    #[expect(
+        clippy::field_reassign_with_default,
+        reason = "A test assigns fields to match the builder"
+    )]
     fn happy_path_equals_field_assignment() {
         let built = SvmParameterBuilder::new()
             .svm_type(SvmType::EpsilonSvr)

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- `CONTRIBUTING.md` records the pull-request gates and the parity command
+
+### Changed
+
+- The minimum Rust version rose from 1.80 to 1.85 because edition 2024 needs it
+- Training, prediction, metric and model-getter functions carry `#[must_use]`, so a caller that drops their result gets a warning
+
 ## [0.9.2] - 2026-10-31
 
 ### Changed

@@ -8,12 +8,18 @@
 //!
 //! Fixtures are kept minimal (bytes, not kilobytes) so the attack
 //! corpus stays reviewable alongside the code it guards.
+#![expect(clippy::unwrap_used, reason = "Tests unwrap a known-valid result")]
+#![expect(
+    clippy::panic,
+    reason = "A test panics when the loader accepts a bad file"
+)]
+#![expect(clippy::indexing_slicing, reason = "Tests unwrap a known-valid result")]
 
 use std::path::PathBuf;
 
 use libsvm_rs::io::{
-    load_model, load_model_from_reader_with_options, load_problem,
-    load_problem_from_reader_with_options, LoadOptions,
+    LoadOptions, load_model, load_model_from_reader_with_options, load_problem,
+    load_problem_from_reader_with_options,
 };
 
 #[cfg(feature = "serde")]
@@ -31,17 +37,12 @@ fn assert_err_contains<E: std::fmt::Display, T: std::fmt::Debug>(
     needle: &str,
 ) {
     match result {
-        Ok(v) => panic!(
-            "expected loader error containing {:?}, got successful parse: {:?}",
-            needle, v
-        ),
+        Ok(v) => panic!("expected loader error containing {needle:?}, got successful parse: {v:?}"),
         Err(e) => {
-            let msg = format!("{}", e);
+            let msg = format!("{e}");
             assert!(
                 msg.contains(needle),
-                "expected error to contain {:?}, got: {}",
-                needle,
-                msg
+                "expected error to contain {needle:?}, got: {msg}"
             );
         }
     }
@@ -72,8 +73,8 @@ fn valid_serde_model() -> SvmModel {
 }
 
 #[cfg(feature = "serde")]
-fn assert_serde_model_err_contains(model: SvmModel, needle: &str) {
-    let json = serde_json::to_string(&model).unwrap();
+fn assert_serde_model_err_contains(model: &SvmModel, needle: &str) {
+    let json = serde_json::to_string(model).unwrap();
     assert_err_contains(serde_json::from_str::<SvmModel>(&json), needle);
 }
 
@@ -158,7 +159,7 @@ fn rejects_sv_feature_indices_not_ascending() {
 fn serde_rejects_rho_length_mismatch() {
     let mut model = valid_serde_model();
     model.rho.clear();
-    assert_serde_model_err_contains(model, "rho has 0 entries, expected 1");
+    assert_serde_model_err_contains(&model, "rho has 0 entries, expected 1");
 }
 
 #[cfg(feature = "serde")]
@@ -166,7 +167,7 @@ fn serde_rejects_rho_length_mismatch() {
 fn serde_rejects_label_length_mismatch() {
     let mut model = valid_serde_model();
     model.label.pop();
-    assert_serde_model_err_contains(model, "label has 1 entries");
+    assert_serde_model_err_contains(&model, "label has 1 entries");
 }
 
 #[cfg(feature = "serde")]
@@ -174,7 +175,7 @@ fn serde_rejects_label_length_mismatch() {
 fn serde_rejects_sv_coef_length_mismatch() {
     let mut model = valid_serde_model();
     model.sv_coef[0].clear();
-    assert_serde_model_err_contains(model, "sv_coef row 0 has 0 entries, expected 1");
+    assert_serde_model_err_contains(&model, "sv_coef row 0 has 0 entries, expected 1");
 }
 
 #[cfg(feature = "serde")]
@@ -182,7 +183,7 @@ fn serde_rejects_sv_coef_length_mismatch() {
 fn serde_rejects_non_finite_gamma() {
     let mut model = valid_serde_model();
     model.param.gamma = f64::INFINITY;
-    assert_serde_model_err_contains(model, "expected f64");
+    assert_serde_model_err_contains(&model, "expected f64");
 }
 
 #[cfg(feature = "serde")]
@@ -190,7 +191,7 @@ fn serde_rejects_non_finite_gamma() {
 fn serde_rejects_non_finite_rho() {
     let mut model = valid_serde_model();
     model.rho[0] = f64::NAN;
-    assert_serde_model_err_contains(model, "expected f64");
+    assert_serde_model_err_contains(&model, "expected f64");
 }
 
 #[cfg(feature = "serde")]
@@ -198,7 +199,7 @@ fn serde_rejects_non_finite_rho() {
 fn serde_rejects_non_finite_sv_coef() {
     let mut model = valid_serde_model();
     model.sv_coef[0][0] = f64::INFINITY;
-    assert_serde_model_err_contains(model, "expected f64");
+    assert_serde_model_err_contains(&model, "expected f64");
 }
 
 #[cfg(feature = "serde")]
@@ -206,7 +207,7 @@ fn serde_rejects_non_finite_sv_coef() {
 fn serde_rejects_negative_gamma() {
     let mut model = valid_serde_model();
     model.param.gamma = -1.0;
-    assert_serde_model_err_contains(model, "gamma must be >= 0");
+    assert_serde_model_err_contains(&model, "gamma must be >= 0");
 }
 
 #[cfg(feature = "serde")]
@@ -215,7 +216,7 @@ fn serde_rejects_negative_degree() {
     let mut model = valid_serde_model();
     model.param.kernel_type = KernelType::Polynomial;
     model.param.degree = -1;
-    assert_serde_model_err_contains(model, "degree must be >= 0");
+    assert_serde_model_err_contains(&model, "degree must be >= 0");
 }
 
 // ─── Problem-file vectors ────────────────────────────────────────────

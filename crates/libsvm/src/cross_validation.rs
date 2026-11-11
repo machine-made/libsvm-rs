@@ -4,6 +4,29 @@
 //! random-split cross-validation for regression/one-class problems.
 //! Matches LIBSVM's `svm_cross_validation` (svm.cpp:2437–2556).
 
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "Checked access is not yet done in this module; remove this line when it is"
+    )
+)]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::float_cmp,
+        reason = "Checked access is not yet done in this module; remove this line when it is"
+    )
+)]
+
 use crate::predict::{predict, predict_probability};
 use crate::train::svm_train;
 use crate::types::{SvmModel, SvmNode, SvmParameter, SvmProblem, SvmType};
@@ -13,9 +36,7 @@ use rayon::prelude::*;
 
 fn predict_cv_target(model: &SvmModel, param: &SvmParameter, x: &[SvmNode]) -> f64 {
     if param.probability && matches!(param.svm_type, SvmType::CSvc | SvmType::NuSvc) {
-        predict_probability(model, x)
-            .map(|(label, _)| label)
-            .unwrap_or_else(|| predict(model, x))
+        predict_probability(model, x).map_or_else(|| predict(model, x), |(label, _)| label)
     } else {
         predict(model, x)
     }
@@ -106,6 +127,8 @@ fn evaluate_fold(
 /// assert_eq!(targets.len(), problem.labels.len());
 /// # Ok::<(), libsvm_rs::SvmError>(())
 /// ```
+#[must_use]
+#[expect(clippy::too_many_lines, reason = "Keep the source loop in one place")]
 pub fn svm_cross_validation(
     prob: &SvmProblem,
     param: &SvmParameter,
@@ -127,9 +150,8 @@ pub fn svm_cross_validation(
 
     if nr_fold > l {
         crate::info(&format!(
-            "WARNING: # folds ({}) > # data ({}). Will use # folds = # data instead \
-             (i.e., leave-one-out cross validation)\n",
-            nr_fold, l
+            "WARNING: # folds ({nr_fold}) > # data ({l}). Will use # folds = # data instead \
+             (i.e., leave-one-out cross validation)\n"
         ));
         nr_fold = l;
     }
@@ -271,7 +293,7 @@ mod tests {
             .map(|i| {
                 vec![SvmNode {
                     index: 1,
-                    value: i as f64 * 0.1,
+                    value: f64::from(i) * 0.1,
                 }]
             })
             .collect();
@@ -290,6 +312,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "C converts the same integer counts to double at these points"
+    )]
     fn cross_validation_classification() {
         let problem = load_problem(&data_dir().join("heart_scale")).unwrap();
         let param = SvmParameter {
@@ -309,7 +335,7 @@ mod tests {
         let correct = target
             .iter()
             .zip(problem.labels.iter())
-            .filter(|(&pred, &label)| pred == label)
+            .filter(|&(&pred, &label)| pred == label)
             .count();
         let accuracy = correct as f64 / problem.labels.len() as f64;
         assert!(
@@ -320,6 +346,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "C converts the same integer counts to double at these points"
+    )]
     fn cross_validation_regression() {
         let problem = load_problem(&data_dir().join("housing_scale")).unwrap();
         let param = SvmParameter {
@@ -344,7 +374,7 @@ mod tests {
             .sum::<f64>()
             / problem.labels.len() as f64;
         assert!(mse.is_finite(), "MSE is not finite");
-        assert!(mse < 500.0, "MSE {} too high", mse);
+        assert!(mse < 500.0, "MSE {mse} too high");
     }
 
     #[test]
@@ -391,7 +421,7 @@ mod tests {
             instances: Vec::new(),
         };
         let target = svm_cross_validation(&prob, &SvmParameter::default(), 5);
-        assert!(target.is_empty());
+        assert_eq!(target.len(), 0);
     }
 
     #[test]

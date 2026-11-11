@@ -1,10 +1,10 @@
 //! Load LIBSVM files with explicit resource caps.
 //!
 //! Run:
-//!   cargo run -p libsvm-rs --example defensive_load
+//!   cargo run -p libsvm-rs --example `defensive_load`
 
 use libsvm_rs::io::{
-    load_model_from_reader_with_options, load_problem_from_reader_with_options, LoadOptions,
+    LoadOptions, load_model_from_reader_with_options, load_problem_from_reader_with_options,
 };
 use libsvm_rs::set_quiet;
 use std::fs::File;

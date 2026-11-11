@@ -1,9 +1,14 @@
 //! Train with probability estimates and print class probabilities.
+#![expect(clippy::expect_used, reason = "An example stops when a load fails")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "An example indexes a fixed training row"
+)]
 
 use libsvm_rs::io::load_problem;
 use libsvm_rs::predict::predict_probability;
 use libsvm_rs::train::svm_train;
-use libsvm_rs::{set_quiet, KernelType, SvmParameter, SvmType};
+use libsvm_rs::{KernelType, SvmParameter, SvmType, set_quiet};
 use std::path::Path;
 
 fn main() {
@@ -28,7 +33,7 @@ fn main() {
 
         print!("i={:<3} true={:<3} pred={:<3}", i, problem.labels[i], pred);
         for (cls, p) in model.label.iter().zip(probs.iter()) {
-            print!("  {}:{:.4}", cls, p);
+            print!("  {cls}:{p:.4}");
         }
         println!();
     }

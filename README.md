@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/libsvm-rs.svg)](https://crates.io/crates/libsvm-rs)
 [![Documentation](https://docs.rs/libsvm-rs/badge.svg)](https://docs.rs/libsvm-rs)
 [![CI](https://github.com/machine-made/libsvm-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/machine-made/libsvm-rs/actions)
-[![MSRV](https://img.shields.io/badge/MSRV-1.80-blue.svg)](Cargo.toml)
+[![MSRV](https://img.shields.io/badge/MSRV-1.85-blue.svg)](Cargo.toml)
 [![License](https://img.shields.io/badge/license-BSD--3-blue.svg)](LICENSE)
 
 A pure-Rust implementation of [LIBSVM](https://github.com/cjlin1/libsvm), for
@@ -171,7 +171,7 @@ enable an optional feature:
 libsvm-rs = "0.9.2"
 ```
 
-MSRV is Rust `1.80` for all builds.
+MSRV is Rust `1.85` for all builds.
 
 ### CLI tools
 

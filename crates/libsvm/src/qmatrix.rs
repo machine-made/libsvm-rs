@@ -7,6 +7,15 @@
 //! Each implementation wraps a `Kernel` and a `Cache`, providing the
 //! `QMatrix` trait that the solver consumes.
 
+#![expect(
+    clippy::indexing_slicing,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "Checked access is not yet done in this module; remove this line when it is"
+)]
+
 use crate::cache::{Cache, Qfloat};
 use crate::kernel::Kernel;
 use crate::types::{SvmNode, SvmParameter};
@@ -41,6 +50,15 @@ pub struct SvcQ<'a> {
 
 impl<'a> SvcQ<'a> {
     /// Build the classification Q matrix used by LIBSVM's `SVC_Q` helper.
+    #[must_use]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "C truncates the same values at these points"
+    )]
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "C converts the same signed values at these points"
+    )]
     pub fn new(x: &'a [Vec<SvmNode>], param: &SvmParameter, y: &[i8]) -> Self {
         let l = x.len();
         let kernel = Kernel::new(x, param);
@@ -49,7 +67,7 @@ impl<'a> SvcQ<'a> {
         // resulting byte count to a safe internal limit. check_parameter is
         // expected to have validated cache_size > 0 before we get here, but
         // even if bypassed the cast and Cache::new prevent any panic.
-        let cache = Cache::new(l, (param.cache_size * 1048576.0) as usize);
+        let cache = Cache::new(l, (param.cache_size * 1_048_576.0) as usize);
         let qd: Vec<f64> = (0..l).map(|i| kernel.evaluate(i, i)).collect();
         let y = y.to_vec();
         Self {
@@ -61,15 +79,22 @@ impl<'a> SvcQ<'a> {
     }
 }
 
-#[allow(clippy::needless_range_loop)]
-impl<'a> QMatrix for SvcQ<'a> {
+#[expect(
+    clippy::needless_range_loop,
+    reason = "Keep the C loop order for comparison with the original"
+)]
+impl QMatrix for SvcQ<'_> {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "C truncates the same values at these points"
+    )]
     fn get_q(&mut self, i: usize, len: usize) -> &[Qfloat] {
         let (data, start) = self.cache.get_data(i, len);
         if start < len {
-            let yi = self.y[i] as f64;
+            let yi = f64::from(self.y[i]);
             for j in start..len {
                 let kval = self.kernel.evaluate(i, j);
-                data[j] = (yi * self.y[j] as f64 * kval) as Qfloat;
+                data[j] = (yi * f64::from(self.y[j]) * kval) as Qfloat;
             }
         }
         &data[..len]
@@ -100,18 +125,34 @@ pub struct OneClassQ<'a> {
 
 impl<'a> OneClassQ<'a> {
     /// Build the one-class Q matrix used by LIBSVM's `ONE_CLASS_Q` helper.
+    #[must_use]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "C truncates the same values at these points"
+    )]
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "C converts the same signed values at these points"
+    )]
     pub fn new(x: &'a [Vec<SvmNode>], param: &SvmParameter) -> Self {
         let l = x.len();
         let kernel = Kernel::new(x, param);
         // See SvcQ::new for the cache_size cast note (saturating float→usize, Cache clamps).
-        let cache = Cache::new(l, (param.cache_size * 1048576.0) as usize);
+        let cache = Cache::new(l, (param.cache_size * 1_048_576.0) as usize);
         let qd: Vec<f64> = (0..l).map(|i| kernel.evaluate(i, i)).collect();
         Self { kernel, cache, qd }
     }
 }
 
-#[allow(clippy::needless_range_loop)]
-impl<'a> QMatrix for OneClassQ<'a> {
+#[expect(
+    clippy::needless_range_loop,
+    reason = "Keep the C loop order for comparison with the original"
+)]
+impl QMatrix for OneClassQ<'_> {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "C truncates the same values at these points"
+    )]
     fn get_q(&mut self, i: usize, len: usize) -> &[Qfloat] {
         let (data, start) = self.cache.get_data(i, len);
         if start < len {
@@ -137,7 +178,7 @@ impl<'a> QMatrix for OneClassQ<'a> {
 
 /// Q matrix for ε-SVR and ν-SVR regression.
 ///
-/// The regression dual has 2l variables (α_i^+ and α_i^-).
+/// The regression dual has 2l variables (`α_i`^+ and `α_i`^-).
 /// The underlying kernel cache stores only l rows of actual kernel
 /// evaluations; `get_q` reorders/signs them into a double-buffered output.
 pub struct SvrQ<'a> {
@@ -159,11 +200,20 @@ pub struct SvrQ<'a> {
 
 impl<'a> SvrQ<'a> {
     /// Build the regression Q matrix used by LIBSVM's `SVR_Q` helper.
+    #[must_use]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "C truncates the same values at these points"
+    )]
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "C converts the same signed values at these points"
+    )]
     pub fn new(x: &'a [Vec<SvmNode>], param: &SvmParameter) -> Self {
         let l = x.len();
         let kernel = Kernel::new(x, param);
         // See SvcQ::new for the cache_size cast note (saturating float→usize, Cache clamps).
-        let cache = Cache::new(l, (param.cache_size * 1048576.0) as usize);
+        let cache = Cache::new(l, (param.cache_size * 1_048_576.0) as usize);
 
         let mut sign = vec![0i8; 2 * l];
         let mut index = vec![0usize; 2 * l];
@@ -194,8 +244,15 @@ impl<'a> SvrQ<'a> {
     }
 }
 
-#[allow(clippy::needless_range_loop)]
-impl<'a> QMatrix for SvrQ<'a> {
+#[expect(
+    clippy::needless_range_loop,
+    reason = "Keep the C loop order for comparison with the original"
+)]
+impl QMatrix for SvrQ<'_> {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "C truncates the same values at these points"
+    )]
     fn get_q(&mut self, i: usize, len: usize) -> &[Qfloat] {
         let real_i = self.index[i];
         let l = self.l;
@@ -214,12 +271,12 @@ impl<'a> QMatrix for SvrQ<'a> {
         // `index[j] < l` is a data-dependent lookup that stays checked.
         let buf_idx = self.next_buffer;
         self.next_buffer = 1 - self.next_buffer;
-        let si = self.sign[i] as f32;
+        let si = f32::from(self.sign[i]);
         let buf = &mut self.buffer[buf_idx][..len];
         let sign = &self.sign[..len];
         let index = &self.index[..len];
         for j in 0..len {
-            buf[j] = si * (sign[j] as f32) * data[index[j]];
+            buf[j] = si * f32::from(sign[j]) * data[index[j]];
         }
         &self.buffer[buf_idx][..len]
     }
@@ -272,7 +329,10 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::needless_range_loop)]
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "Keep the C loop order for comparison with the original"
+    )]
     fn svc_q_symmetry_and_sign() {
         let data = vec![
             make_nodes(&[(1, 1.0)]),
