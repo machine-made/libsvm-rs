@@ -74,10 +74,6 @@ pub struct Solver<'a> {
     eps: f64,
 }
 
-#[expect(
-    clippy::needless_range_loop,
-    reason = "Keep the C loop order for comparison with the original"
-)]
 impl<'a> Solver<'a> {
     /// Run the SMO solver.
     ///

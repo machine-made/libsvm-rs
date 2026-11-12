@@ -618,12 +618,11 @@ pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), S
     // SV section
     writeln!(w, "SV")?;
     let num_sv = model.sv.len();
-    let num_coef_rows = model.sv_coef.len(); // nr_class - 1
 
     for i in 0..num_sv {
         // sv_coef columns for this SV: %.17g
-        for j in 0..num_coef_rows {
-            write!(w, "{} ", fmt_17g(model.sv_coef[j][i]))?;
+        for row in &model.sv_coef {
+            write!(w, "{} ", fmt_17g(row[i]))?;
         }
         // sparse features: %.8g
         if model.param.kernel_type == KernelType::Precomputed {
