@@ -46,12 +46,19 @@ This project is a Rust port of LIBSVM. Before you add or change port code:
    bash scripts/compare_references.sh
    ```
 
-3. For a change that can move a number, run the full measurement:
-   `bash scripts/setup_reference_libsvm.sh`, then, from the repository
-   root, `bash scripts/parity_ulp.sh`. It runs every differential case
-   with the C and the Rust tools on the same machine, and writes
-   `parity/parity_ulp.json` with the largest distance in units in the last
-   place (ULP) for each output. The run takes a long time.
+3. For a change that can move a number, run this command from the
+   repository root:
+
+   ```
+   bash scripts/parity_ulp.sh
+   ```
+
+   The command builds the C tools.
+   The command runs every case with the C tool and the Rust tool on the same machine.
+   The command compares probabilities at the precision that the tools print.
+   The command compares support-vector rows at the precision that the tools print.
+   The command writes `parity/parity_ulp.json`.
+   The run takes a long time.
 
 A pull request that has no frozen reference and no parity result is not
 accepted.

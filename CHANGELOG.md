@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - `CONTRIBUTING.md` records the pull-request gates and the parity command
-- `scripts/parity_ulp.sh` runs every differential case with the C and the Rust tools and writes the distance per output in units in the last place to `parity/parity_ulp.json`; on Linux x86-64 every one of 1,015,975 values in 3,030 fields is bit-identical to LIBSVM 3.37
+- `scripts/parity_ulp.sh` compared the printed outputs of the C tool and the Rust tool. On Linux x86-64, against LIBSVM 3.37, every compared value matched. The script compared header values, coefficients and predictions at full precision (`%.17g`). The script compared probabilities at the printed precision (`%g`). The script compared support-vector rows at the printed precision (`%.8g`).
 
 ### Changed
 

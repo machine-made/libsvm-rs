@@ -8,22 +8,19 @@
 
 set -euo pipefail
 
-ROOT="$(realpath "$(dirname "$0")/..")"
-PARITY_PY="$(realpath -m "${PARITY_PY:-${ROOT}/../skills/plugins/mm/skills/port/scripts/parity.py}")"
+# macOS realpath has no -m.
+# Python realpath resolves the path on Linux and on macOS.
+ROOT="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$(dirname "$0")/..")"
 # The suite calls cargo in the current folder, and the report records
 # its input paths: run from the root so both work and the paths stay relative.
 cd "${ROOT}"
 SUITE=".tmp/differential_suite"
 EXPORT="scripts/parity_export.py"
+COMPARE="scripts/parity_compare.py"
 CONFIG="parity/tolerances.json"
 REPORT="parity/parity_ulp.json"
 REF="${SUITE}/parity_c.json"
 CAND="${SUITE}/parity_r.json"
-
-if [[ ! -f "${PARITY_PY}" ]]; then
-    echo "parity.py is not at ${PARITY_PY}. Set PARITY_PY to that script." >&2
-    exit 2
-fi
 
 rm -rf "${SUITE}"
 mkdir -p "${SUITE}"
@@ -41,7 +38,7 @@ fi
 python3 "${EXPORT}" "${SUITE}"
 
 set +e
-python3 "${PARITY_PY}" \
+python3 "${COMPARE}" \
     --ref "${REF}" \
     --cand "${CAND}" \
     --config "${CONFIG}" \
