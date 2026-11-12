@@ -1,0 +1,10 @@
+{
+  "comment": "SPDX-License-Identifier: BSD-3-Clause",
+  "default": {
+    "rtol": 0,
+    "atol": 0,
+    "precision": "f64",
+    "signed_zero": "strict",
+    "reason": "Measurement run: report the exact distance to the C original"
+  }
+}
