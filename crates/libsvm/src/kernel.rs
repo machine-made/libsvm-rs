@@ -4,15 +4,6 @@
 //! - Standalone `k_function` for prediction (operates on sparse node slices)
 //! - `Kernel` struct for training (precomputes x_square for RBF, stores refs)
 
-#![expect(
-    clippy::indexing_slicing,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
-)]
-#![expect(
-    clippy::arithmetic_side_effects,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
-)]
-
 use crate::types::{KernelType, SvmNode, SvmParameter};
 
 // ─── Integer power (matches LIBSVM's powi) ─────────────────────────
@@ -27,6 +18,7 @@ pub fn powi(base: f64, times: i32) -> f64 {
     let mut tmp = base;
     let mut ret = 1.0;
     let mut t = times;
+    // The exponent stays positive. Division and remainder by 2 cannot overflow.
     while t > 0 {
         if t % 2 == 1 {
             ret *= tmp;
@@ -42,11 +34,21 @@ pub fn powi(base: f64, times: i32) -> f64 {
 /// Sparse dot product of two sorted-by-index node slices.
 ///
 /// This is the merge-based O(n+m) algorithm from LIBSVM.
+/// The loop checks each cursor before it indexes.
+/// The call does not panic.
 #[inline]
 #[must_use]
 #[expect(
     clippy::comparison_chain,
     reason = "Keep the C branch order for comparison with the original"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "the loop checks ix against x_len and iy against y_len"
+)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "each cursor stays below its slice length, so adding 1 cannot overflow"
 )]
 pub fn dot(x: &[SvmNode], y: &[SvmNode]) -> f64 {
     let mut sum = 0.0;
@@ -55,8 +57,7 @@ pub fn dot(x: &[SvmNode], y: &[SvmNode]) -> f64 {
     let x_len = x.len();
     let y_len = y.len();
     while ix < x_len && iy < y_len {
-        let x_node = &x[ix];
-        let y_node = &y[iy];
+        let (x_node, y_node) = (&x[ix], &y[iy]);
         if x_node.index == y_node.index {
             sum += x_node.value * y_node.value;
             ix += 1;
@@ -78,31 +79,43 @@ pub fn dot(x: &[SvmNode], y: &[SvmNode]) -> f64 {
     clippy::comparison_chain,
     reason = "Keep the C branch order for comparison with the original"
 )]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "each loop checks its cursor against the slice length"
+)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "each cursor stays below its slice length, so adding 1 cannot overflow"
+)]
 fn sparse_sq_dist(x: &[SvmNode], y: &[SvmNode]) -> f64 {
     let mut sum = 0.0;
     let mut ix = 0;
     let mut iy = 0;
-    while ix < x.len() && iy < y.len() {
-        if x[ix].index == y[iy].index {
-            let d = x[ix].value - y[iy].value;
+    let x_len = x.len();
+    let y_len = y.len();
+    while ix < x_len && iy < y_len {
+        let (x_node, y_node) = (&x[ix], &y[iy]);
+        if x_node.index == y_node.index {
+            let d = x_node.value - y_node.value;
             sum += d * d;
             ix += 1;
             iy += 1;
-        } else if x[ix].index > y[iy].index {
-            sum += y[iy].value * y[iy].value;
+        } else if x_node.index > y_node.index {
+            sum += y_node.value * y_node.value;
             iy += 1;
         } else {
-            sum += x[ix].value * x[ix].value;
+            sum += x_node.value * x_node.value;
             ix += 1;
         }
     }
-    // Drain remaining elements
-    while ix < x.len() {
-        sum += x[ix].value * x[ix].value;
+    while ix < x_len {
+        let value = x[ix].value;
+        sum += value * value;
         ix += 1;
     }
-    while iy < y.len() {
-        sum += y[iy].value * y[iy].value;
+    while iy < y_len {
+        let value = y[iy].value;
+        sum += value * value;
         iy += 1;
     }
     sum
@@ -188,6 +201,42 @@ impl<'a> Kernel<'a> {
     }
 
     /// Evaluate K(x\[i\], x\[j\]) using precomputed data where possible.
+    ///
+    /// # Panics
+    ///
+    /// The call panics when `i` or `j` is outside the training set.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "the caller passes indices inside the training set, and the square store has one entry per row"
+    )]
+    pub fn evaluate(&self, i: usize, j: usize) -> f64 {
+        let xi = self.x[i];
+        let xj = self.x[j];
+        let (sq_i, sq_j) = if let Some(sq) = &self.x_square {
+            (Some(sq[i]), Some(sq[j]))
+        } else {
+            (None, None)
+        };
+        self.pair(xi, xj, sq_i, sq_j)
+    }
+
+    /// Rows in training order.
+    #[must_use]
+    pub(crate) fn rows(&self) -> &[&'a [SvmNode]] {
+        &self.x
+    }
+
+    /// Precomputed squared norms for an RBF kernel.
+    #[must_use]
+    pub(crate) fn squares(&self) -> Option<&[f64]> {
+        self.x_square.as_deref()
+    }
+
+    /// Evaluate one kernel from two rows that the caller already selected.
+    ///
+    /// `sq_i` and `sq_j` are the precomputed squared norms. `None` selects the sparse distance.
     #[inline]
     #[must_use]
     #[expect(
@@ -198,25 +247,30 @@ impl<'a> Kernel<'a> {
         clippy::cast_sign_loss,
         reason = "C converts the same signed values at these points"
     )]
-    pub fn evaluate(&self, i: usize, j: usize) -> f64 {
-        let xi = self.x[i];
-        let xj = self.x[j];
+    pub(crate) fn pair(
+        &self,
+        xi: &[SvmNode],
+        xj: &[SvmNode],
+        sq_i: Option<f64>,
+        sq_j: Option<f64>,
+    ) -> f64 {
         match self.kernel_type {
             KernelType::Linear => dot(xi, xj),
             KernelType::Polynomial => powi(self.gamma * dot(xi, xj) + self.coef0, self.degree),
             KernelType::Rbf => {
-                // Use precomputed x_square: ‖x_i - x_j‖² = x_sq[i] + x_sq[j] - 2*dot(x_i, x_j)
-                let val = if let Some(sq) = &self.x_square {
-                    sq[i] + sq[j] - 2.0 * dot(xi, xj)
+                // ‖x_i - x_j‖² = x_sq[i] + x_sq[j] - 2*dot(x_i, x_j)
+                let val = if let (Some(left), Some(right)) = (sq_i, sq_j) {
+                    left + right - 2.0 * dot(xi, xj)
                 } else {
                     sparse_sq_dist(xi, xj)
                 };
                 (-self.gamma * val).exp()
             }
             KernelType::Sigmoid => (self.gamma * dot(xi, xj) + self.coef0).tanh(),
-            // See the free-function kernel_function above for the safety note on the
-            // float→usize cast: saturates on out-of-range values, .get() maps to None,
-            // .map_or returns 0.0 (intentional, matches upstream; silent mis-map, no panic).
+            // `as usize` saturates when the node value is negative, NaN, or above `usize::MAX`.
+            // `get` returns `None` when that index is past the row.
+            // `map_or` returns 0.0 for `None`.
+            // The read does not panic.
             KernelType::Precomputed => xj
                 .first()
                 .and_then(|node| xi.get(node.value as usize))
@@ -227,6 +281,10 @@ impl<'a> Kernel<'a> {
     /// Swap data-point references and precomputed squares at positions i and j.
     ///
     /// Used by `QMatrix` implementations during solver shrinking.
+    ///
+    /// # Panics
+    ///
+    /// The call panics when `i` or `j` is outside the training set.
     pub fn swap_index(&mut self, i: usize, j: usize) {
         self.x.swap(i, j);
         if let Some(ref mut sq) = self.x_square {
@@ -372,7 +430,12 @@ mod tests {
         for i in 0..data.len() {
             for j in 0..data.len() {
                 let via_struct = kern.evaluate(i, j);
-                let via_func = k_function(&data[i], &data[j], &param);
+                assert!(data.get(i).is_some());
+                assert!(data.get(j).is_some());
+                let (Some(left), Some(right)) = (data.get(i), data.get(j)) else {
+                    return;
+                };
+                let via_func = k_function(left, right, &param);
                 assert!(
                     (via_struct - via_func).abs() < 1e-15,
                     "mismatch at ({i},{j}): {via_struct} vs {via_func}"
