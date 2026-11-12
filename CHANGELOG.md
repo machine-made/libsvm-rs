@@ -12,14 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `CONTRIBUTING.md` records the pull-request gates and the parity command
 - `scripts/parity_ulp.sh` compared the printed outputs of the C tool and the Rust tool. On Linux x86-64, against LIBSVM 3.37, every compared value matched. The script compared header values, coefficients and predictions at full precision (`%.17g`). The script compared probabilities at the printed precision (`%g`). The script compared support-vector rows at the printed precision (`%.8g`).
 
+### Improved
+
+- Index checks replaced raw indexing in the kernel, the cache, and the Q matrix
+
 ### Changed
 
 - The minimum Rust version rose from 1.80 to 1.85 because edition 2024 needs it
 - Training, prediction, metric and model-getter functions carry `#[must_use]`, so a caller that drops their result gets a warning
-
-### Improved
-
-- Index checks replaced raw indexing in the kernel, the cache, and the Q matrix
 
 ## [0.9.2] - 2026-10-31
 
