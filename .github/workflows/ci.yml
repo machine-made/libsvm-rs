@@ -44,6 +44,9 @@ jobs:
       - run: cargo test --locked --all-features --verbose
       - run: cargo test --locked --features rayon
       - run: cargo test --locked --no-default-features
+      # The parity comparator must not pass without a measurement; its own tests guard that.
+      - name: Test the parity comparator
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
   build-matrix:
     name: Build (${{ matrix.os }} / ${{ matrix.rust }})
