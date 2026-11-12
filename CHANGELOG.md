@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The minimum Rust version rose from 1.80 to 1.85 because edition 2024 needs it
 - Training, prediction, metric and model-getter functions carry `#[must_use]`, so a caller that drops their result gets a warning
 
+### Improved
+
+- Index checks replaced raw indexing in the kernel, the cache, and the Q matrix
+
 ## [0.9.2] - 2026-10-31
 
 ### Changed

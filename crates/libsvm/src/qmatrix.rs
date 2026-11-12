@@ -7,18 +7,77 @@
 //! Each implementation wraps a `Kernel` and a `Cache`, providing the
 //! `QMatrix` trait that the solver consumes.
 
-#![expect(
-    clippy::indexing_slicing,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
-)]
-#![expect(
-    clippy::arithmetic_side_effects,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
-)]
-
 use crate::cache::{Cache, Qfloat};
 use crate::kernel::Kernel;
 use crate::types::{SvmNode, SvmParameter};
+
+/// Fill one label-scaled kernel tail.
+#[inline]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "C truncates the same values at these points"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "the caller passes a column inside the training set and a tail inside that column"
+)]
+fn fill_labeled(
+    data: &mut [Qfloat],
+    start: usize,
+    end: usize,
+    i: usize,
+    y: &[i8],
+    kernel: &Kernel<'_>,
+) {
+    let yi = f64::from(y[i]);
+    let rows = kernel.rows();
+    let xi = rows[i];
+    let x_tail = &rows[start..end];
+    let y_tail = &y[start..end];
+    let data_tail = &mut data[start..end];
+    if let Some(sq) = kernel.squares() {
+        let sq_i = sq[i];
+        let sq_tail = &sq[start..end];
+        for (((slot, &yj), xj), &sq_j) in data_tail.iter_mut().zip(y_tail).zip(x_tail).zip(sq_tail)
+        {
+            let kval = kernel.pair(xi, xj, Some(sq_i), Some(sq_j));
+            *slot = (yi * f64::from(yj) * kval) as Qfloat;
+        }
+        return;
+    }
+    for ((slot, &yj), xj) in data_tail.iter_mut().zip(y_tail).zip(x_tail) {
+        let kval = kernel.pair(xi, xj, None, None);
+        *slot = (yi * f64::from(yj) * kval) as Qfloat;
+    }
+}
+
+/// Fill one plain kernel tail.
+#[inline]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "C truncates the same values at these points"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "the caller passes a column inside the training set and a tail inside that column"
+)]
+fn fill_plain(data: &mut [Qfloat], start: usize, end: usize, i: usize, kernel: &Kernel<'_>) {
+    let rows = kernel.rows();
+    let xi = rows[i];
+    let x_tail = &rows[start..end];
+    let data_tail = &mut data[start..end];
+    if let Some(sq) = kernel.squares() {
+        let sq_i = sq[i];
+        let sq_tail = &sq[start..end];
+        for ((slot, xj), &sq_j) in data_tail.iter_mut().zip(x_tail).zip(sq_tail) {
+            *slot = kernel.pair(xi, xj, Some(sq_i), Some(sq_j)) as Qfloat;
+        }
+        return;
+    }
+    for (slot, xj) in data_tail.iter_mut().zip(x_tail) {
+        *slot = kernel.pair(xi, xj, None, None) as Qfloat;
+    }
+}
 
 /// Trait for Q matrix access used by the SMO solver.
 ///
@@ -27,12 +86,21 @@ use crate::types::{SvmNode, SvmParameter};
 /// own buffers to avoid lifetime issues.
 pub trait QMatrix {
     /// Get column `i` of the Q matrix, with at least `len` elements.
+    ///
+    /// # Panics
+    ///
+    /// The call panics when `i` is outside the stored column count.
+    /// The call panics when `len` is longer than that count.
     fn get_q(&mut self, i: usize, len: usize) -> &[Qfloat];
 
     /// Get the diagonal of Q: `QD[i] = Q[i][i]`.
     fn get_qd(&self) -> &[f64];
 
     /// Swap indices i and j in all internal data structures.
+    ///
+    /// # Panics
+    ///
+    /// The call panics when `i` or `j` is outside the stored column count.
     fn swap_index(&mut self, i: usize, j: usize);
 }
 
@@ -79,23 +147,21 @@ impl<'a> SvcQ<'a> {
     }
 }
 
-#[expect(
-    clippy::needless_range_loop,
-    reason = "Keep the C loop order for comparison with the original"
-)]
 impl QMatrix for SvcQ<'_> {
+    /// Get column `i` of the Q matrix, with at least `len` elements.
+    ///
+    /// # Panics
+    ///
+    /// The call panics when `i` is outside the training set.
+    /// The call panics when `len` is longer than the training set.
     #[expect(
-        clippy::cast_possible_truncation,
-        reason = "C truncates the same values at these points"
+        clippy::indexing_slicing,
+        reason = "the cache grows the row to the requested length before this slice"
     )]
     fn get_q(&mut self, i: usize, len: usize) -> &[Qfloat] {
         let (data, start) = self.cache.get_data(i, len);
         if start < len {
-            let yi = f64::from(self.y[i]);
-            for j in start..len {
-                let kval = self.kernel.evaluate(i, j);
-                data[j] = (yi * f64::from(self.y[j]) * kval) as Qfloat;
-            }
+            fill_labeled(data, start, len, i, &self.y, &self.kernel);
         }
         &data[..len]
     }
@@ -104,6 +170,11 @@ impl QMatrix for SvcQ<'_> {
         &self.qd
     }
 
+    /// Swap indices `i` and `j` in all internal data structures.
+    ///
+    /// # Panics
+    ///
+    /// The call panics when `i` or `j` is outside the training set.
     fn swap_index(&mut self, i: usize, j: usize) {
         self.cache.swap_index(i, j);
         self.kernel.swap_index(i, j);
@@ -144,21 +215,21 @@ impl<'a> OneClassQ<'a> {
     }
 }
 
-#[expect(
-    clippy::needless_range_loop,
-    reason = "Keep the C loop order for comparison with the original"
-)]
 impl QMatrix for OneClassQ<'_> {
+    /// Get column `i` of the Q matrix, with at least `len` elements.
+    ///
+    /// # Panics
+    ///
+    /// The call panics when `i` is outside the training set.
+    /// The call panics when `len` is longer than the training set.
     #[expect(
-        clippy::cast_possible_truncation,
-        reason = "C truncates the same values at these points"
+        clippy::indexing_slicing,
+        reason = "the cache grows the row to the requested length before this slice"
     )]
     fn get_q(&mut self, i: usize, len: usize) -> &[Qfloat] {
         let (data, start) = self.cache.get_data(i, len);
         if start < len {
-            for j in start..len {
-                data[j] = self.kernel.evaluate(i, j) as Qfloat;
-            }
+            fill_plain(data, start, len, i, &self.kernel);
         }
         &data[..len]
     }
@@ -167,6 +238,11 @@ impl QMatrix for OneClassQ<'_> {
         &self.qd
     }
 
+    /// Swap indices `i` and `j` in all internal data structures.
+    ///
+    /// # Panics
+    ///
+    /// The call panics when `i` or `j` is outside the training set.
     fn swap_index(&mut self, i: usize, j: usize) {
         self.cache.swap_index(i, j);
         self.kernel.swap_index(i, j);
@@ -209,27 +285,37 @@ impl<'a> SvrQ<'a> {
         clippy::cast_sign_loss,
         reason = "C converts the same signed values at these points"
     )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "each column index stays below the doubled row count allocated above"
+    )]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "the row vector is already allocated, so twice its length and each smaller sum stay in range"
+    )]
     pub fn new(x: &'a [Vec<SvmNode>], param: &SvmParameter) -> Self {
         let l = x.len();
         let kernel = Kernel::new(x, param);
         // See SvcQ::new for the cache_size cast note (saturating float→usize, Cache clamps).
         let cache = Cache::new(l, (param.cache_size * 1_048_576.0) as usize);
 
-        let mut sign = vec![0i8; 2 * l];
-        let mut index = vec![0usize; 2 * l];
-        let mut qd = vec![0.0f64; 2 * l];
+        let l2 = l * 2;
+        let mut sign = vec![0i8; l2];
+        let mut index = vec![0usize; l2];
+        let mut qd = vec![0.0f64; l2];
 
         for k in 0..l {
+            let hi = k + l;
             sign[k] = 1;
-            sign[k + l] = -1;
+            sign[hi] = -1;
             index[k] = k;
-            index[k + l] = k;
+            index[hi] = k;
             let kk = kernel.evaluate(k, k);
             qd[k] = kk;
-            qd[k + l] = kk;
+            qd[hi] = kk;
         }
 
-        let buffer = [vec![0.0 as Qfloat; 2 * l], vec![0.0 as Qfloat; 2 * l]];
+        let buffer = [vec![0.0; l2], vec![0.0; l2]];
 
         Self {
             kernel,
@@ -244,39 +330,37 @@ impl<'a> SvrQ<'a> {
     }
 }
 
-#[expect(
-    clippy::needless_range_loop,
-    reason = "Keep the C loop order for comparison with the original"
-)]
 impl QMatrix for SvrQ<'_> {
+    /// Get column `i` of the Q matrix, with at least `len` elements.
+    ///
+    /// # Panics
+    ///
+    /// The call panics when `i` is outside the doubled training set.
+    /// The call panics when `len` is longer than that set.
     #[expect(
-        clippy::cast_possible_truncation,
-        reason = "C truncates the same values at these points"
+        clippy::indexing_slicing,
+        reason = "the caller stays inside the doubled training set, and each stored index stays inside the kernel row"
     )]
     fn get_q(&mut self, i: usize, len: usize) -> &[Qfloat] {
         let real_i = self.index[i];
-        let l = self.l;
+        let n = self.l;
 
-        // Fetch (or fill) the full kernel row for the real data index
-        let (data, start) = self.cache.get_data(real_i, l);
-        if start < l {
-            for j in start..l {
-                data[j] = self.kernel.evaluate(real_i, j) as Qfloat;
-            }
+        // Fetch (or fill) the full kernel row for the real data index.
+        let (data, start) = self.cache.get_data(real_i, n);
+        if start < n {
+            fill_plain(data, start, n, real_i, &self.kernel);
         }
 
-        // Reorder and apply signs into the output buffer.
-        // Slice buf/sign/index to `len` so the compiler drops the
-        // per-element bounds checks; `data` is an l-length cache row and
-        // `index[j] < l` is a data-dependent lookup that stays checked.
+        // Each stored index stays below `n`.
+        // `new` writes `k`, and swap only exchanges those values.
         let buf_idx = self.next_buffer;
-        self.next_buffer = 1 - self.next_buffer;
+        self.next_buffer ^= 1;
         let si = f32::from(self.sign[i]);
-        let buf = &mut self.buffer[buf_idx][..len];
         let sign = &self.sign[..len];
         let index = &self.index[..len];
-        for j in 0..len {
-            buf[j] = si * f32::from(sign[j]) * data[index[j]];
+        let buf = &mut self.buffer[buf_idx][..len];
+        for (slot, (&sign_j, &idx)) in buf.iter_mut().zip(sign.iter().zip(index)) {
+            *slot = si * f32::from(sign_j) * data[idx];
         }
         &self.buffer[buf_idx][..len]
     }
@@ -285,6 +369,11 @@ impl QMatrix for SvrQ<'_> {
         &self.qd
     }
 
+    /// Swap indices `i` and `j` in all internal data structures.
+    ///
+    /// # Panics
+    ///
+    /// The call panics when `i` or `j` is outside the doubled training set.
     fn swap_index(&mut self, i: usize, j: usize) {
         self.sign.swap(i, j);
         self.index.swap(i, j);
@@ -302,6 +391,38 @@ mod tests {
             .iter()
             .map(|&(i, v)| SvmNode { index: i, value: v })
             .collect()
+    }
+
+    fn copy_prefix(dest: &mut [f32], src: &[f32], n: usize) {
+        let Some(head) = dest.get_mut(..n) else {
+            assert!(dest.len() >= n);
+            return;
+        };
+        let Some(row) = src.get(..n) else {
+            assert!(src.len() >= n);
+            return;
+        };
+        head.copy_from_slice(row);
+    }
+
+    fn entry(matrix: &[Vec<f32>], i: usize, j: usize) -> f32 {
+        let Some(row) = matrix.get(i) else {
+            assert!(matrix.len() > i);
+            return 0.0;
+        };
+        let Some(&value) = row.get(j) else {
+            assert!(row.len() > j);
+            return 0.0;
+        };
+        value
+    }
+
+    fn at(row: &[f32], j: usize) -> f32 {
+        let Some(&value) = row.get(j) else {
+            assert!(row.len() > j);
+            return 0.0;
+        };
+        value
     }
 
     fn default_rbf_param() -> SvmParameter {
@@ -329,10 +450,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::needless_range_loop,
-        reason = "Keep the C loop order for comparison with the original"
-    )]
     fn svc_q_symmetry_and_sign() {
         let data = vec![
             make_nodes(&[(1, 1.0)]),
@@ -348,29 +465,29 @@ mod tests {
         let mut matrix = vec![vec![0.0f32; l]; l];
         for i in 0..l {
             let row = q.get_q(i, l).to_vec();
-            matrix[i][..l].copy_from_slice(&row[..l]);
+            let Some(dest) = matrix.get_mut(i) else {
+                assert!(matrix.len() > i);
+                return;
+            };
+            copy_prefix(dest, &row, l);
         }
 
         // Check symmetry
         for i in 0..l {
             for j in 0..l {
+                let left = entry(&matrix, i, j);
+                let right = entry(&matrix, j, i);
                 assert!(
-                    (matrix[i][j] - matrix[j][i]).abs() < 1e-6,
-                    "Q[{},{}]={} != Q[{},{}]={}",
-                    i,
-                    j,
-                    matrix[i][j],
-                    j,
-                    i,
-                    matrix[j][i]
+                    (left - right).abs() < 1e-6,
+                    "Q[{i},{j}]={left} != Q[{j},{i}]={right}"
                 );
             }
         }
 
         // Check sign: Q[0][1] should be negative (y[0]*y[1] = -1)
-        assert!(matrix[0][1] < 0.0);
+        assert!(entry(&matrix, 0, 1) < 0.0);
         // Q[0][2] should be positive (y[0]*y[2] = +1)
-        assert!(matrix[0][2] > 0.0);
+        assert!(entry(&matrix, 0, 2) > 0.0);
     }
 
     #[test]
@@ -381,10 +498,10 @@ mod tests {
 
         let row = q.get_q(0, 2);
         // All values should be positive (kernel values are always positive for RBF)
-        assert!(row[0] > 0.0);
-        assert!(row[1] > 0.0);
+        assert!(at(row, 0) > 0.0);
+        assert!(at(row, 1) > 0.0);
         // Diagonal should be 1.0
-        assert!((row[0] - 1.0).abs() < 1e-6);
+        assert!((at(row, 0) - 1.0).abs() < 1e-6);
     }
 
     #[test]
@@ -392,7 +509,7 @@ mod tests {
         let data = vec![make_nodes(&[(1, 1.0)]), make_nodes(&[(1, 2.0)])];
         let param = default_rbf_param();
         let mut q = SvrQ::new(&data, &param);
-        let l2 = 2 * data.len(); // 4
+        let l2 = data.len().saturating_mul(2); // 4
 
         // Get two rows — they use different buffers
         let row0 = q.get_q(0, l2).to_vec();
@@ -406,6 +523,7 @@ mod tests {
 
         // For index 0 (sign +1) and index 2 (sign -1, real_idx 0):
         // Q[0][2] = sign[0]*sign[2]*K(0,0) = 1*(-1)*1 = -1
-        assert!((row0[2] - (-1.0)).abs() < 1e-6, "Q[0][2] = {}", row0[2]);
+        let q02 = at(&row0, 2);
+        assert!((q02 - (-1.0)).abs() < 1e-6, "Q[0][2] = {q02}");
     }
 }
