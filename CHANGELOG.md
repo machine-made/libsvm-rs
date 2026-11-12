@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - `CONTRIBUTING.md` records the pull-request gates and the parity command
+- `scripts/parity_ulp.sh` compared the printed outputs of the C tool and the Rust tool. On Linux x86-64, against LIBSVM 3.37, every compared value matched. The script compared header values, coefficients and predictions at full precision (`%.17g`). The script compared probabilities at the printed precision (`%g`). The script compared support-vector rows at the printed precision (`%.8g`).
 
 ### Changed
 
