@@ -5,7 +5,7 @@
 Each float is compared at f64 or f32.
 The ULP count uses the IEEE-754 bit pattern in float order.
 Exit 0 when every field is inside the tolerance.
-Exit 1 when one field is not.
+Exit 1 when one field is not, or when the files hold no number.
 Exit 2 when an input is not usable.
 """
 
@@ -94,8 +94,25 @@ def load_document(path: Path, role: str) -> Any:
         )
 
 
+def reject_unless_f64(value: int | float, where: str, role: str) -> None:
+    """Reject a number that does not fit an f64."""
+    try:
+        number = float(value)
+    except OverflowError:
+        number = math.nan
+    if not math.isfinite(number):
+        reject(
+            f"The {role} value at {where} does not fit an f64. "
+            "Use a finite number and run the compare again."
+        )
+
+
 def as_leaf(value: object, where: str, role: str) -> Leaf:
-    if isinstance(value, bool) or isinstance(value, int | float):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float):
+        # A JSON number has no Infinity token. Overflow must not become infinity.
+        reject_unless_f64(value, where, role)
         return value
     if isinstance(value, str):
         key = value.strip().lower()
@@ -104,9 +121,12 @@ def as_leaf(value: object, where: str, role: str) -> Leaf:
         text = value.strip()
         if text.lower().startswith(("0x", "-0x", "+0x")):
             try:
-                return float.fromhex(text)
+                number = float.fromhex(text)
             except ValueError:
-                pass
+                number = None
+            if number is not None:
+                reject_unless_f64(number, where, role)
+                return number
         reject(
             f"The {role} value at {where} is the string {value!r}, not a number. "
             "Use a JSON number, NaN, Infinity or -Infinity."
@@ -115,6 +135,18 @@ def as_leaf(value: object, where: str, role: str) -> Leaf:
         f"The {role} value at {where} is a {type(value).__name__}, not a number. "
         "Use a JSON number and run the compare again."
     )
+
+
+def field_token(key: str) -> str:
+    # A dot in a key must not look like the separator of a nested key.
+    return key.replace("\\", "\\\\").replace(".", "\\.")
+
+
+def field_path(parent: str, key: str) -> str:
+    token = field_token(key)
+    if parent == "":
+        return token
+    return f"{parent}.{token}"
 
 
 @dataclass
@@ -156,13 +188,13 @@ def collect_fields(document: object, role: str) -> dict[str, Series]:
                 add_field(path).nodes.append(("", "an empty object"))
                 return
             for key, item in node.items():
-                descend(item, f"{path}.{key}")
+                descend(item, field_path(path, key))
             return
         consume(node, add_field(path), path, "")
 
     if isinstance(document, dict):
         for key, item in document.items():
-            descend(item, key)
+            descend(item, field_path("", key))
         return found
     consume(document, add_field("$"), "$", "")
     return found
@@ -239,12 +271,21 @@ def parse_tolerance(raw: object, where: str) -> Tolerance:
         value = raw[key]
         if isinstance(value, bool) or not isinstance(value, int | float):
             reject(f"The tolerance {where}.{key} must be a finite number, zero or more.")
-        if not math.isfinite(float(value)) or float(value) < 0:
+        try:
+            number = float(value)
+        except OverflowError:
+            number = math.nan
+        if not math.isfinite(number):
+            reject(
+                f"The tolerance {where}.{key} does not fit an f64. "
+                "Use a finite number and run the compare again."
+            )
+        if number < 0:
             reject(f"The tolerance {where}.{key} must be a finite number, zero or more.")
         if key == "rtol":
-            rtol = float(value)
+            rtol = number
         else:
-            atol = float(value)
+            atol = number
     if "ulp" in raw:
         value = raw["ulp"]
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -392,28 +433,47 @@ class FieldReport:
         return out
 
 
+def mark_nonfinite(report: FieldReport, place: str, ref: float, cand: float) -> None:
+    report.nonfinite_mismatch += 1
+    if report.max_abs_err != math.inf:
+        report.worst_abs_index = place
+    if report.max_rel_err != math.inf:
+        report.worst_rel_index = place
+    report.max_abs_err = math.inf
+    report.max_rel_err = math.inf
+    report.note(place, ref, cand, "non-finite values differ")
+
+
 def compare_float(report: FieldReport, tol: Tolerance, place: str, ref: float, cand: float) -> None:
     width = tol.width()
     try:
-        ref = narrow(float(ref), width)
-        cand = narrow(float(cand), width)
+        ref_in = float(ref)
+        cand_in = float(cand)
     except OverflowError:
-        report.note(place, str(ref), str(cand), "the integer is too large for a float compare")
+        reject(
+            f"The value at {report.name}{place} does not fit an f64. "
+            "Use a finite number and run the compare again."
+        )
+    # Finiteness uses the parsed values, before the narrower format.
+    # A finite value that overflows that format is not an infinite input.
+    ref_finite = math.isfinite(ref_in)
+    cand_finite = math.isfinite(cand_in)
+    ref_n = narrow(ref_in, width)
+    cand_n = narrow(cand_in, width)
+    ref_overflow = ref_finite and not math.isfinite(ref_n)
+    cand_overflow = cand_finite and not math.isfinite(cand_n)
+    if (ref_overflow and not cand_finite) or (cand_overflow and not ref_finite):
+        mark_nonfinite(report, place, ref_in, cand_in)
         return
+    ref = ref_n
+    cand = cand_n
     if is_subnormal(ref, width):
         report.subnormal_in_ref += 1
     if same_bits(ref, cand, width) or (math.isnan(ref) and math.isnan(cand)):
         return
     # No tolerance covers a finite value against NaN or infinity.
     if not math.isfinite(ref) or not math.isfinite(cand):
-        report.nonfinite_mismatch += 1
-        if report.max_abs_err != math.inf:
-            report.worst_abs_index = place
-        if report.max_rel_err != math.inf:
-            report.worst_rel_index = place
-        report.max_abs_err = math.inf
-        report.max_rel_err = math.inf
-        report.note(place, ref, cand, "non-finite values differ")
+        mark_nonfinite(report, place, ref, cand)
         return
     if ref == 0.0 and cand == 0.0:
         if tol.signed_zero == "strict":
@@ -428,7 +488,8 @@ def compare_float(report: FieldReport, tol: Tolerance, place: str, ref: float, c
     if abs_err > report.max_abs_err:
         report.max_abs_err = abs_err
         report.worst_abs_index = place
-    if ref != 0.0 and rel_err > report.max_rel_err:
+    # A zero reference has no finite ratio. Store Infinity so the max stays honest.
+    if rel_err > report.max_rel_err:
         report.max_rel_err = rel_err
         report.worst_rel_index = place
     report.max_ulp = max(report.max_ulp, steps)
@@ -529,6 +590,21 @@ def build_report(
     }
 
 
+def same_resolved_path(left: Path, right: Path) -> bool:
+    # A link or a ".." segment must not hide that the report replaces an input.
+    return left.resolve() == right.resolve()
+
+
+def reject_report_alias(report: Path, ref: Path, cand: Path, config: Path) -> None:
+    named = (("reference", ref), ("candidate", cand), ("config", config))
+    for role, path in named:
+        if same_resolved_path(report, path):
+            reject(
+                f"The report path resolves to the {role} file. "
+                "Choose a different report path and run the compare again."
+            )
+
+
 def print_summary(report: dict[str, object]) -> None:
     summary = report["summary"]
     print("summary " + json.dumps(summary, sort_keys=True))
@@ -556,11 +632,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
+    reject_report_alias(args.report, args.ref, args.cand, args.config)
     passed, reports = measure(
         load_document(args.ref, "reference"),
         load_document(args.cand, "candidate"),
         load_document(args.config, "config"),
     )
+    # No numeric value means the compare measured nothing. That must not pass.
+    if sum(item.count for item in reports) == 0:
+        passed = False
+        print(
+            "parity_compare: The comparison holds zero numeric values. "
+            "Add numeric values and run the compare again.",
+            file=sys.stderr,
+        )
     report = json_safe(build_report(args.ref, args.cand, args.config, passed, reports))
     if not isinstance(report, dict):
         reject("The report is not an object. Run the compare again.")

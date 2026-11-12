@@ -54,7 +54,9 @@ This project is a Rust port of LIBSVM. Before you add or change port code:
    ```
 
    The command builds the C tools.
-   The command runs every case with the C tool and the Rust tool on the same machine.
+   The suite runs every configuration that it supports.
+   The suite skips the 10 configurations that it lists as skipped.
+   The command runs the C tool and the Rust tool on the same machine.
    The command compares probabilities at the precision that the tools print.
    The command compares support-vector rows at the precision that the tools print.
    The command writes `parity/parity_ulp.json`.

@@ -6,6 +6,7 @@ The C tool and the Rust tool write the same LIBSVM text.
 float() reads each float token from that text.
 An empty object marks a file that one side does not have.
 A present file that cannot be parsed stops the export.
+The export stops when the folder has no model or prediction file.
 """
 
 from __future__ import annotations
@@ -435,6 +436,11 @@ def export(suite: Path) -> tuple[ExportDoc, ExportDoc]:
     c_doc: ExportDoc = {key: {} for key in FIELDS}
     r_doc: ExportDoc = {key: {} for key in FIELDS}
     files = index_files(suite)
+    if not files:
+        die(
+            "The suite folder holds no model or prediction file. "
+            "Add a model or a prediction file and run the export again."
+        )
     for case in sorted(files):
         sides = files[case]
         put_model(c_doc, r_doc, case, sides, "model", PLAIN)
