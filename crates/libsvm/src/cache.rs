@@ -186,12 +186,13 @@ impl Cache {
         reason = "the caller passes row indices inside the row count, and listed nodes use the same range"
     )]
     pub fn swap_index(&mut self, i: usize, j: usize) {
+        // Check both indices before the equal-index return.
+        // A bad index panics before the list changes.
+        let _ = (&self.data[i], &self.data[j]);
+
         if i == j {
             return;
         }
-
-        // A bad index panics before the list changes.
-        let _ = (&self.data[i], &self.data[j]);
 
         let i_in = self.in_lru(i);
         let j_in = self.in_lru(j);
@@ -252,6 +253,11 @@ mod tests {
     use super::*;
 
     fn set(row: &mut [Qfloat], index: usize, value: Qfloat) {
+        let row_len = row.len();
+        assert!(
+            index < row_len,
+            "index {index} is outside a row of length {row_len}"
+        );
         if let Some(slot) = row.get_mut(index) {
             *slot = value;
         }

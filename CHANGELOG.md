@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Improved
 
-- Index checks replaced raw indexing in the kernel, the cache, and the Q matrix
+- The kernel, the cache, and the Q matrix lost their module-wide exemptions for indexing and for integer arithmetic. Checked access replaced raw indexing in private code. Each remaining raw access kept one single-site exception. The exception named the guarantee.
 
 ### Changed
 

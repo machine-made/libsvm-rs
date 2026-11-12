@@ -34,10 +34,8 @@ pub fn powi(base: f64, times: i32) -> f64 {
 /// Sparse dot product of two sorted-by-index node slices.
 ///
 /// This is the merge-based O(n+m) algorithm from LIBSVM.
-///
-/// # Panics
-///
-/// The call panics when a node cursor falls outside its slice.
+/// The loop checks each cursor before it indexes.
+/// The call does not panic.
 #[inline]
 #[must_use]
 #[expect(
@@ -269,7 +267,10 @@ impl<'a> Kernel<'a> {
                 (-self.gamma * val).exp()
             }
             KernelType::Sigmoid => (self.gamma * dot(xi, xj) + self.coef0).tanh(),
-            // A missing precomputed entry stays 0. LIBSVM uses that value.
+            // `as usize` saturates when the node value is negative, NaN, or above `usize::MAX`.
+            // `get` returns `None` when that index is past the row.
+            // `map_or` returns 0.0 for `None`.
+            // The read does not panic.
             KernelType::Precomputed => xj
                 .first()
                 .and_then(|node| xi.get(node.value as usize))
