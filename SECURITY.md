@@ -6,7 +6,7 @@ Security fixes go into the latest release on crates.io (currently 0.9.x).
 
 ## Reporting a vulnerability
 
-GitHub issues are disabled for this repository. Report a vulnerability
+Please do not open a public issue for a vulnerability. Report it
 privately through GitHub instead:
 [Security → Report a vulnerability](https://github.com/machine-made/libsvm-rs/security/advisories/new).
 

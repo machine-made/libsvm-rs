@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - The minimum Rust version rose from 1.80 to 1.85 because edition 2024 needs it
 - Training, prediction, metric and model-getter functions carry `#[must_use]`, so a caller that drops their result gets a warning
+- GitHub issues are enabled again; `NOTICE` and `SECURITY.md` point bug reports and ideas to the issue tracker and keep vulnerabilities on the private advisory form
 
 ## [0.9.2] - 2026-10-31
 
