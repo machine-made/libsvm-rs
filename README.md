@@ -1,12 +1,12 @@
-![libsvm-rs banner](assets/readme-banner-v2.png)
+![libsvm-rs banner](https://raw.githubusercontent.com/machine-made/libsvm-rs/main/assets/readme-banner-v2.png)
 
+[![CI](https://github.com/machine-made/libsvm-rs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/machine-made/libsvm-rs/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/libsvm-rs.svg)](https://crates.io/crates/libsvm-rs)
-[![Documentation](https://docs.rs/libsvm-rs/badge.svg)](https://docs.rs/libsvm-rs)
-[![CI](https://github.com/machine-made/libsvm-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/machine-made/libsvm-rs/actions)
 [![MSRV](https://img.shields.io/badge/MSRV-1.85-blue.svg)](Cargo.toml)
-[![License](https://img.shields.io/badge/license-BSD--3-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+[![Documentation](https://docs.rs/libsvm-rs/badge.svg)](https://docs.rs/libsvm-rs)
 
-A pure-Rust implementation of [LIBSVM](https://github.com/cjlin1/libsvm), for
+`libsvm-rs` is a pure-Rust implementation of [LIBSVM](https://github.com/cjlin1/libsvm), for
 when you want LIBSVM's model and data formats without linking the C/C++ library.
 It covers the same SVM types, kernels, sparse text format, model files, and
 command-line tools as upstream.
