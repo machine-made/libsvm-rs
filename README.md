@@ -1,4 +1,4 @@
-![libsvm-rs banner](https://raw.githubusercontent.com/machine-made/libsvm-rs/main/assets/readme-banner-v2.png)
+![libsvm-rs banner](https://raw.githubusercontent.com/machine-made/libsvm-rs/main/assets/readme-banner-v3.jpg)
 
 [![CI](https://github.com/machine-made/libsvm-rs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/machine-made/libsvm-rs/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/libsvm-rs.svg)](https://crates.io/crates/libsvm-rs)
