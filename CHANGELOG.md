@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Training, prediction, metric and model-getter functions carry `#[must_use]`, so a caller that drops their result gets a warning
 - GitHub issues are enabled again. `NOTICE` points bug reports and ideas to the issue tracker. `NOTICE` and `SECURITY.md` keep vulnerability reports on the private advisory form.
 
+### Fixed
+
+- The model loader and the model writer now reject a precomputed-kernel sample serial number above `i32::MAX`. Before, the loader accepted it and the writer silently wrote `2147483647`. C LIBSVM casts the serial to an `int` wherever it uses it. The errors of the loader, the writer and `check_parameter` name the value and the limit. `save_model` checks every serial before it creates the file, so a failed save no longer truncates an existing model file.
+
 ## [0.9.2] - 2026-10-31
 
 ### Changed

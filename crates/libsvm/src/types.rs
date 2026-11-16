@@ -210,6 +210,31 @@ impl SvmParameter {
     }
 }
 
+/// Checks the first node of a precomputed-kernel row, which must be
+/// `0:sample_serial_number`.
+///
+/// The serial is an integer in `[1, upper]`, and never above `i32::MAX`,
+/// because C LIBSVM casts it to an `int` wherever it uses it. The caller passes
+/// the sample count as `upper`, or `usize::MAX` when it has none. On failure the
+/// text names the value found and the limit, and continues the caller's message
+/// after "must start with `0:sample_serial_number`".
+pub(crate) fn check_sample_serial(first: &SvmNode, upper: usize) -> Result<(), String> {
+    let limit = i32::try_from(upper).unwrap_or(i32::MAX);
+    if first.index == 0
+        && first.value.is_finite()
+        && first.value >= 1.0
+        && first.value <= f64::from(limit)
+        && first.value.fract() == 0.0
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "in [1, {limit}], got {}:{}",
+            first.index, first.value
+        ))
+    }
+}
+
 /// Full parameter check including ν-SVC feasibility against training data.
 ///
 /// Matches the original LIBSVM `svm_check_parameter()`.
@@ -250,7 +275,6 @@ pub fn check_parameter(
     }
 
     if param.kernel_type == KernelType::Precomputed {
-        let upper = problem.instances.len() as f64;
         for (row, instance) in problem.instances.iter().enumerate() {
             let first = instance.first().ok_or_else(|| {
                 SvmError::InvalidParameter(format!(
@@ -258,18 +282,12 @@ pub fn check_parameter(
                     row + 1
                 ))
             })?;
-            if first.index != 0
-                || !first.value.is_finite()
-                || first.value < 1.0
-                || first.value > upper
-                || first.value.fract() != 0.0
-            {
-                return Err(SvmError::InvalidParameter(format!(
-                    "precomputed kernel row {} must start with 0:sample_serial_number in [1, {}]",
-                    row + 1,
-                    problem.instances.len()
-                )));
-            }
+            check_sample_serial(first, problem.instances.len()).map_err(|why| {
+                SvmError::InvalidParameter(format!(
+                    "precomputed kernel row {} must start with 0:sample_serial_number {why}",
+                    row + 1
+                ))
+            })?;
         }
     }
 
@@ -660,6 +678,70 @@ mod tests {
         };
         let err = check_parameter(&problem, &param).unwrap_err();
         assert!(format!("{err}").contains("missing 0:sample_serial_number"));
+    }
+
+    fn precomputed_problem_with_serial(serial: f64) -> SvmProblem {
+        SvmProblem {
+            labels: vec![1.0, -1.0],
+            instances: vec![
+                vec![SvmNode {
+                    index: 0,
+                    value: 1.0,
+                }],
+                vec![SvmNode {
+                    index: 0,
+                    value: serial,
+                }],
+            ],
+        }
+    }
+
+    #[test]
+    fn check_parameter_rejects_precomputed_serial_above_i32_max() {
+        // i32::MAX + 1. C LIBSVM casts the serial to an int.
+        let problem = precomputed_problem_with_serial(2_147_483_648.0);
+        let param = SvmParameter {
+            kernel_type: KernelType::Precomputed,
+            ..Default::default()
+        };
+        let err = check_parameter(&problem, &param).unwrap_err();
+        assert!(matches!(err, crate::error::SvmError::InvalidParameter(_)));
+        let msg = format!("{err}");
+        assert!(msg.contains("row 2"), "unexpected error: {msg}");
+        assert!(msg.contains("2147483648"), "unexpected error: {msg}");
+        assert!(msg.contains("[1, 2]"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn check_parameter_rejects_precomputed_fractional_serial() {
+        let problem = precomputed_problem_with_serial(1.5);
+        let param = SvmParameter {
+            kernel_type: KernelType::Precomputed,
+            ..Default::default()
+        };
+        let err = check_parameter(&problem, &param).unwrap_err();
+        assert!(matches!(err, crate::error::SvmError::InvalidParameter(_)));
+        let msg = format!("{err}");
+        assert!(msg.contains("must start with 0:sample_serial_number"));
+        assert!(msg.contains("1.5"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn sample_serial_limit_never_exceeds_i32_max() {
+        // A problem with more than i32::MAX rows cannot be built in a test,
+        // so the check is called with the row count directly.
+        let at_limit = SvmNode {
+            index: 0,
+            value: f64::from(i32::MAX),
+        };
+        let above_limit = SvmNode {
+            index: 0,
+            value: f64::from(i32::MAX) + 1.0,
+        };
+        check_sample_serial(&at_limit, usize::MAX).unwrap();
+        let why = check_sample_serial(&above_limit, usize::MAX).unwrap_err();
+        assert!(why.contains("[1, 2147483647]"), "unexpected reason: {why}");
+        assert!(why.contains("2147483648"), "unexpected reason: {why}");
     }
 
     #[test]
