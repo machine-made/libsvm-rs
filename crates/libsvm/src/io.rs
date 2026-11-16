@@ -36,7 +36,9 @@ use std::io::{BufRead, Write};
 use std::path::Path;
 
 use crate::error::SvmError;
-use crate::types::{KernelType, SvmModel, SvmNode, SvmParameter, SvmProblem, SvmType};
+use crate::types::{
+    KernelType, SvmModel, SvmNode, SvmParameter, SvmProblem, SvmType, check_sample_serial,
+};
 use crate::util::MAX_FEATURE_INDEX;
 use crate::util::parse_feature_index;
 
@@ -492,7 +494,8 @@ const MAX_TOTAL_SV: usize = 10_000_000;
 /// Save an SVM model to a file in the original LIBSVM format.
 /// # Errors
 ///
-/// Returns [`SvmError`] when the file cannot be created or written.
+/// Returns [`SvmError`] when the file cannot be created or written, or when a
+/// precomputed-kernel serial does not fit in an `i32` ([`SvmError::ModelFormatError`]).
 pub fn save_model(path: &Path, model: &SvmModel) -> Result<(), SvmError> {
     let file = std::fs::File::create(path)?;
     let writer = std::io::BufWriter::new(file);
@@ -536,7 +539,8 @@ pub fn save_model(path: &Path, model: &SvmModel) -> Result<(), SvmError> {
 )]
 /// # Errors
 ///
-/// Returns [`SvmError`] when the writer cannot accept the model text.
+/// Returns [`SvmError`] when the writer cannot accept the model text, or when a
+/// precomputed-kernel serial does not fit in an `i32` ([`SvmError::ModelFormatError`]).
 pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), SvmError> {
     let param = &model.param;
 
@@ -627,7 +631,18 @@ pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), S
         // sparse features: %.8g
         if model.param.kernel_type == KernelType::Precomputed {
             if let Some(node) = model.sv[i].first() {
-                write!(w, "0:{} ", node.value as i32)?;
+                // C writes `(int)value`. A serial outside the `i32` range is
+                // undefined behaviour there, so refuse to write it.
+                let serial = i32::try_from(node.value as i64).map_err(|_| {
+                    SvmError::ModelFormatError(format!(
+                        "support vector {}: precomputed kernel serial {} does not fit in an i32 ({} to {})",
+                        i + 1,
+                        node.value,
+                        i32::MIN,
+                        i32::MAX
+                    ))
+                })?;
+                write!(w, "0:{serial} ")?;
             }
         } else {
             for node in &model.sv[i] {
@@ -659,7 +674,7 @@ pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), S
 /// - support-vector feature token shape, ascending feature indices, and
 ///   [`LoadOptions::max_feature_index`],
 /// - precomputed-kernel support-vector rows starting with
-///   `0:sample_serial_number`.
+///   `0:sample_serial_number`, an integer from 1 to `i32::MAX`.
 ///
 /// This loader does not prove model provenance, semantic correctness relative
 /// to a training set, or suitability for a deployment. Malformed text input
@@ -1132,15 +1147,13 @@ fn validate_precomputed_row(
         ))
     })?;
 
-    if first.index != 0
-        || !first.value.is_finite()
-        || first.value < 1.0
-        || first.value.fract() != 0.0
-    {
-        return Err(SvmError::ModelFormatError(format!(
-            "line {line_num}: precomputed kernel {context} must start with 0:sample_serial_number"
-        )));
-    }
+    // A model file does not record the training sample count, so only the
+    // `i32::MAX` cap applies here.
+    check_sample_serial(first, usize::MAX).map_err(|why| {
+        SvmError::ModelFormatError(format!(
+            "line {line_num}: precomputed kernel {context} must start with 0:sample_serial_number {why}"
+        ))
+    })?;
 
     Ok(())
 }
@@ -1898,6 +1911,109 @@ SV\n\
             format!("{err}").contains("missing 0:sample_serial_number"),
             "unexpected error: {err}"
         );
+    }
+
+    fn precomputed_model_text(serial: &str) -> Vec<u8> {
+        format!(
+            "svm_type c_svc\n\
+kernel_type precomputed\n\
+nr_class 2\n\
+total_sv 1\n\
+rho 0\n\
+label 1 -1\n\
+nr_sv 1 0\n\
+SV\n\
+0.1 0:{serial}\n"
+        )
+        .into_bytes()
+    }
+
+    fn precomputed_model_with_serial(serial: f64) -> SvmModel {
+        SvmModel {
+            param: SvmParameter {
+                svm_type: SvmType::CSvc,
+                kernel_type: KernelType::Precomputed,
+                ..Default::default()
+            },
+            nr_class: 2,
+            sv: vec![vec![SvmNode {
+                index: 0,
+                value: serial,
+            }]],
+            sv_coef: vec![vec![0.25]],
+            rho: vec![0.0],
+            prob_a: vec![],
+            prob_b: vec![],
+            prob_density_marks: vec![],
+            sv_indices: vec![],
+            label: vec![1, -1],
+            n_sv: vec![1, 0],
+        }
+    }
+
+    #[test]
+    fn reject_precomputed_model_sv_with_serial_above_i32_max() {
+        // i32::MAX + 1. C LIBSVM casts the serial to an int.
+        let input = precomputed_model_text("2147483648");
+        let err = load_model_from_reader(&input[..]).unwrap_err();
+        assert!(
+            matches!(err, SvmError::ModelFormatError(_)),
+            "unexpected error: {err}"
+        );
+        let msg = format!("{err}");
+        assert!(msg.contains("2147483648"), "unexpected error: {msg}");
+        assert!(msg.contains("2147483647"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn reject_precomputed_model_sv_with_fractional_serial() {
+        let input = precomputed_model_text("1.5");
+        let err = load_model_from_reader(&input[..]).unwrap_err();
+        assert!(
+            matches!(err, SvmError::ModelFormatError(_)),
+            "unexpected error: {err}"
+        );
+        assert!(
+            format!("{err}").contains("must start with 0:sample_serial_number"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn precomputed_model_round_trips_serial_i32_max() {
+        // The model loader has no sample count, so a hand-built model with
+        // one support vector carries the largest serial an int can hold.
+        let model = precomputed_model_with_serial(f64::from(i32::MAX));
+
+        let mut first = Vec::new();
+        save_model_to_writer(&mut first, &model).unwrap();
+        let text = String::from_utf8(first.clone()).unwrap();
+        assert!(text.contains("0.25 0:2147483647 \n"), "model text: {text}");
+
+        let loaded = load_model_from_reader(&first[..]).unwrap();
+        let node = loaded.sv[0][0];
+        assert_eq!(node.index, 0);
+        assert_eq!(node.value.to_bits(), f64::from(i32::MAX).to_bits());
+
+        let mut second = Vec::new();
+        save_model_to_writer(&mut second, &loaded).unwrap();
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn save_precomputed_model_rejects_serial_above_i32_max() {
+        for serial in [2_147_483_648.0, f64::INFINITY, -2_147_483_649.0] {
+            let model = precomputed_model_with_serial(serial);
+            let mut buf = Vec::new();
+            let err = save_model_to_writer(&mut buf, &model).unwrap_err();
+            assert!(
+                matches!(err, SvmError::ModelFormatError(_)),
+                "serial {serial}: unexpected error: {err}"
+            );
+            let msg = format!("{err}");
+            assert!(msg.contains(&serial.to_string()), "unexpected error: {msg}");
+            assert!(msg.contains("2147483647"), "unexpected error: {msg}");
+        }
     }
 
     #[test]
