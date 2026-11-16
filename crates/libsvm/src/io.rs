@@ -491,12 +491,52 @@ pub fn load_problem_from_reader_with_options(
 const MAX_NR_CLASS: usize = 65535;
 const MAX_TOTAL_SV: usize = 10_000_000;
 
+/// Narrows the precomputed-kernel serial of support vector `sv_number`
+/// (counted from 1) to the `i32` that the model file holds.
+///
+/// C writes `(int)value`, which is undefined behaviour outside the `i32` range.
+/// The `f64` is checked first: casting before the check would turn
+/// `2147483647.5` into `i32::MAX` and NaN into 0. A value inside the range with
+/// a fractional part truncates toward zero, as the C cast does.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the value is inside the i32 range and C truncates the same way"
+)]
+fn checked_serial(sv_number: usize, value: f64) -> Result<i32, SvmError> {
+    if value.is_finite() && (f64::from(i32::MIN)..=f64::from(i32::MAX)).contains(&value) {
+        // The `i64` cast only drops the fraction here, so `try_from` succeeds.
+        if let Ok(serial) = i32::try_from(value as i64) {
+            return Ok(serial);
+        }
+    }
+    Err(SvmError::ModelFormatError(format!(
+        "support vector {sv_number}: precomputed kernel serial {value} does not fit in an i32 ({} to {})",
+        i32::MIN,
+        i32::MAX
+    )))
+}
+
+/// Checks the serial of every support vector of a precomputed-kernel model,
+/// the way [`save_model_to_writer`] will write them.
+fn check_precomputed_serials(model: &SvmModel) -> Result<(), SvmError> {
+    if model.param.kernel_type == KernelType::Precomputed {
+        for (i, sv) in model.sv.iter().enumerate() {
+            if let Some(node) = sv.first() {
+                checked_serial(i + 1, node.value)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Save an SVM model to a file in the original LIBSVM format.
 /// # Errors
 ///
 /// Returns [`SvmError`] when the file cannot be created or written, or when a
 /// precomputed-kernel serial does not fit in an `i32` ([`SvmError::ModelFormatError`]).
 pub fn save_model(path: &Path, model: &SvmModel) -> Result<(), SvmError> {
+    // Check every serial before `File::create` truncates the file at `path`.
+    check_precomputed_serials(model)?;
     let file = std::fs::File::create(path)?;
     let writer = std::io::BufWriter::new(file);
     save_model_to_writer(writer, model)
@@ -533,10 +573,6 @@ pub fn save_model(path: &Path, model: &SvmModel) -> Result<(), SvmError> {
 /// assert_eq!(loaded.svm_type(), SvmType::CSvc);
 /// # Ok::<(), libsvm_rs::SvmError>(())
 /// ```
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "C truncates the same values at these points"
-)]
 /// # Errors
 ///
 /// Returns [`SvmError`] when the writer cannot accept the model text, or when a
@@ -631,18 +667,7 @@ pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), S
         // sparse features: %.8g
         if model.param.kernel_type == KernelType::Precomputed {
             if let Some(node) = model.sv[i].first() {
-                // C writes `(int)value`. A serial outside the `i32` range is
-                // undefined behaviour there, so refuse to write it.
-                let serial = i32::try_from(node.value as i64).map_err(|_| {
-                    SvmError::ModelFormatError(format!(
-                        "support vector {}: precomputed kernel serial {} does not fit in an i32 ({} to {})",
-                        i + 1,
-                        node.value,
-                        i32::MIN,
-                        i32::MAX
-                    ))
-                })?;
-                write!(w, "0:{serial} ")?;
+                write!(w, "0:{} ", checked_serial(i + 1, node.value)?)?;
             }
         } else {
             for node in &model.sv[i] {
@@ -1993,6 +2018,8 @@ SV\n\
         let loaded = load_model_from_reader(&first[..]).unwrap();
         let node = loaded.sv[0][0];
         assert_eq!(node.index, 0);
+        // Tolerance zero: an integer serial must survive text output and
+        // reading exactly, so the comparison is on the bits of the `f64`.
         assert_eq!(node.value.to_bits(), f64::from(i32::MAX).to_bits());
 
         let mut second = Vec::new();
@@ -2014,6 +2041,86 @@ SV\n\
             assert!(msg.contains(&serial.to_string()), "unexpected error: {msg}");
             assert!(msg.contains("2147483647"), "unexpected error: {msg}");
         }
+    }
+
+    #[test]
+    fn save_precomputed_model_rejects_serial_that_narrows_into_range() {
+        // Cast first, check second would turn 2147483647.5 into i32::MAX and
+        // NaN into 0, and both would pass. The `f64` itself must be checked.
+        for serial in [2_147_483_647.5, f64::NAN] {
+            let model = precomputed_model_with_serial(serial);
+            let mut buf = Vec::new();
+            let err = save_model_to_writer(&mut buf, &model).unwrap_err();
+            assert!(
+                matches!(err, SvmError::ModelFormatError(_)),
+                "serial {serial}: unexpected error: {err}"
+            );
+            let msg = format!("{err}");
+            assert!(msg.contains(&serial.to_string()), "unexpected error: {msg}");
+            assert!(msg.contains("2147483647"), "unexpected error: {msg}");
+        }
+    }
+
+    #[test]
+    fn save_precomputed_model_accepts_serial_at_i32_limits() {
+        for (serial, written) in [
+            (2_147_483_647.0, "0:2147483647 \n"),
+            (-2_147_483_648.0, "0:-2147483648 \n"),
+            // A fractional serial inside the range truncates toward zero,
+            // as C `(int)` does.
+            (1.9, "0:1 \n"),
+            (-1.9, "0:-1 \n"),
+        ] {
+            let model = precomputed_model_with_serial(serial);
+            let mut buf = Vec::new();
+            save_model_to_writer(&mut buf, &model).unwrap();
+            let text = String::from_utf8(buf).unwrap();
+            assert!(
+                text.contains(written),
+                "serial {serial}: model text: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn save_model_keeps_existing_file_when_a_serial_is_out_of_range() {
+        let dir = std::env::temp_dir().join(format!(
+            "libsvm_rs_save_model_serial_range_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("model.txt");
+
+        let valid = precomputed_model_with_serial(3.0);
+        save_model(&path, &valid).unwrap();
+        let before = std::fs::read(&path).unwrap();
+
+        // The first support vector is valid and the second is not, so a
+        // writer that checks while it writes has already written the header
+        // and the first row when it fails.
+        let mut invalid = precomputed_model_with_serial(1.0);
+        invalid.sv.push(vec![SvmNode {
+            index: 0,
+            value: 2_147_483_648.0,
+        }]);
+        invalid.sv_coef[0].push(0.5);
+        invalid.n_sv = vec![2, 0];
+        let result = save_model(&path, &invalid);
+        let after = std::fs::read(&path);
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, SvmError::ModelFormatError(_)),
+            "unexpected error: {err}"
+        );
+        let msg = format!("{err}");
+        assert!(msg.contains("2147483648"), "unexpected error: {msg}");
+        assert_eq!(
+            after.unwrap(),
+            before,
+            "the file of the first model changed"
+        );
     }
 
     #[test]
