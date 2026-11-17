@@ -61,6 +61,9 @@ fn slot<'a, T>(
         .ok_or_else(|| RowFault { name, index, len })
 }
 
+/// Largest row count for which every smaller count converts exactly to `f64`: 2^53.
+const MAX_EXACT_ROWS: u64 = 9_007_199_254_740_992;
+
 /// Result of the solver.
 #[derive(Debug, Clone)]
 pub struct SolutionInfo {
@@ -193,6 +196,14 @@ impl<'a> Solver<'a> {
         eps: f64,
         shrinking: bool,
     ) -> Result<SolutionInfo, RowFault> {
+        // Every count of rows up to 2^53 converts exactly to f64 (see the rho code).
+        if !matches!(u64::try_from(l), Ok(rows) if rows <= MAX_EXACT_ROWS) {
+            return Err(RowFault {
+                name: "l",
+                index: l,
+                len: usize::MAX,
+            });
+        }
         let qd = cut(q.get_qd(), l, "qd")?.to_vec();
         let p = cut(p_, l, "p")?.to_vec();
         let y = cut(y_, l, "y")?.to_vec();
@@ -1108,7 +1119,7 @@ impl<'a> Solver<'a> {
         if nr_free > 0 {
             #[expect(
                 clippy::cast_precision_loss,
-                reason = "the row count is converted once at division, exactly for every count that fits i32"
+                reason = "the row count is converted once at division; run rejects more than 2^53 rows, so the count is exact"
             )]
             let count = nr_free as f64;
             Ok(sum_free / count)
@@ -1169,7 +1180,7 @@ impl<'a> Solver<'a> {
         let r1 = if nr_free1 > 0 {
             #[expect(
                 clippy::cast_precision_loss,
-                reason = "the row count is converted once at division, exactly for every count that fits i32"
+                reason = "the row count is converted once at division; run rejects more than 2^53 rows, so the count is exact"
             )]
             let count = nr_free1 as f64;
             sum_free1 / count
@@ -1180,7 +1191,7 @@ impl<'a> Solver<'a> {
         let r2 = if nr_free2 > 0 {
             #[expect(
                 clippy::cast_precision_loss,
-                reason = "the row count is converted once at division, exactly for every count that fits i32"
+                reason = "the row count is converted once at division; run rejects more than 2^53 rows, so the count is exact"
             )]
             let count = nr_free2 as f64;
             sum_free2 / count
@@ -1284,6 +1295,29 @@ mod tests {
     fn slot_rejects_a_missing_index() {
         let mut row = [0.0, 1.0];
         assert_fault(slot(&mut row[..], 3, "alpha").map(|_| ()), "alpha", 3, 2);
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn run_rejects_more_than_two_to_the_53_rows() {
+        let q: Box<dyn QMatrix> = Box::new(StubQ {
+            qd: vec![1.0; 2],
+            row: vec![0.0; 2],
+        });
+        let mut alpha = vec![0.0; 2];
+        let result = Solver::run(
+            SolverVariant::Standard,
+            usize::MAX,
+            q,
+            &[0.0; 2],
+            &[1_i8; 2],
+            &mut alpha,
+            1.0,
+            1.0,
+            0.001,
+            true,
+        );
+        assert_fault(result.map(|_| ()), "l", usize::MAX, usize::MAX);
     }
 
     #[test]
