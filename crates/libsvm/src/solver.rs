@@ -142,7 +142,7 @@ impl<'a> Solver<'a> {
     )]
     #[expect(
         clippy::expect_used,
-        reason = "p, y, alpha and the Q diagonal cover l, and each solver vector has length l"
+        reason = "run checks that p, y, alpha and the Q diagonal cover l; each Q row has the length the QMatrix contract promises"
     )]
     pub fn solve(
         variant: SolverVariant,
@@ -382,22 +382,36 @@ impl<'a> Solver<'a> {
     }
 
     fn swap_index(&mut self, i: usize, j: usize) -> Result<(), RowFault> {
-        let _ = take(&self.y, i, "y")?;
-        let _ = take(&self.y, j, "y")?;
-        let _ = take(&self.g, i, "g")?;
-        let _ = take(&self.g, j, "g")?;
-        let _ = take(&self.g_bar, i, "g_bar")?;
-        let _ = take(&self.g_bar, j, "g_bar")?;
-        let _ = take(&self.alpha_status, i, "status")?;
-        let _ = take(&self.alpha_status, j, "status")?;
-        let _ = take(&self.alpha, i, "alpha")?;
-        let _ = take(&self.alpha, j, "alpha")?;
-        let _ = take(&self.p, i, "p")?;
-        let _ = take(&self.p, j, "p")?;
-        let _ = take(&self.active_set, i, "active_set")?;
-        let _ = take(&self.active_set, j, "active_set")?;
-        let _ = take(&self.qd, i, "qd")?;
-        let _ = take(&self.qd, j, "qd")?;
+        let index = i.max(j);
+        if index
+            >= self
+                .y
+                .len()
+                .min(self.g.len())
+                .min(self.g_bar.len())
+                .min(self.alpha_status.len())
+                .min(self.alpha.len())
+                .min(self.p.len())
+                .min(self.active_set.len())
+                .min(self.qd.len())
+        {
+            let lengths = [
+                ("y", self.y.len()),
+                ("g", self.g.len()),
+                ("g_bar", self.g_bar.len()),
+                ("status", self.alpha_status.len()),
+                ("alpha", self.alpha.len()),
+                ("p", self.p.len()),
+                ("active_set", self.active_set.len()),
+                ("qd", self.qd.len()),
+            ];
+            for (name, len) in lengths {
+                if index >= len {
+                    return Err(RowFault { name, index, len });
+                }
+            }
+        }
+        // The combined length check covers both indices for all eight swaps.
         self.q.swap_index(i, j);
         self.y.swap(i, j);
         self.g.swap(i, j);
@@ -412,7 +426,7 @@ impl<'a> Solver<'a> {
 
     #[expect(
         clippy::arithmetic_side_effects,
-        reason = "nr_free stays at most the active row count, and the products are the C int test"
+        reason = "nr_free <= active_size <= l <= isize::MAX; the comparison products use u128"
     )]
     fn reconstruct_gradient(&mut self) -> Result<(), RowFault> {
         if self.active_size == self.l {
@@ -440,21 +454,22 @@ impl<'a> Solver<'a> {
             }
         }
 
-        // `nr_free` is at most the row count, so twice that count fits in `usize`.
+        // `nr_free <= l`, and a slice length is at most `isize::MAX`, so twice the count fits.
         if 2 * nr_free < active_size {
             crate::info("WARNING: using -h 0 may be faster\n");
         }
 
         let alpha = cut(&self.alpha, active_size, "alpha")?;
-        // `active_size` stays at most `l`.
-        // The product is the C `int` test.
-        if nr_free * l > 2 * active_size * (l - active_size) {
+        // Both loop orders add each G entry's terms in ascending free-row order, as in C.
+        // With l <= isize::MAX, even 2 * l * l fits u128 on 32- and 64-bit targets.
+        if (nr_free as u128) * (l as u128) > 2 * (active_size as u128) * ((l - active_size) as u128)
+        {
             for i in active_size..l {
                 let q_i = self.q.get_q(i, active_size).to_vec();
                 let q_i = cut(&q_i, active_size, "q")?;
                 #[expect(
                     clippy::indexing_slicing,
-                    reason = "j stays below active_size, and alpha, status and q_i were cut to that length"
+                    reason = "rows_active checked g through l and i < l; j < active_size and alpha, status, q_i were cut to it"
                 )]
                 for j in 0..active_size {
                     if status[j] == AlphaStatus::Free {
@@ -463,11 +478,10 @@ impl<'a> Solver<'a> {
                 }
             }
         } else {
-            for (i, one_status) in status.iter().enumerate() {
+            for (i, (one_status, &alpha_i)) in status.iter().zip(alpha).enumerate() {
                 if *one_status == AlphaStatus::Free {
                     let q_i = self.q.get_q(i, l).to_vec();
                     let q_i = cut(&q_i, l, "q")?;
-                    let alpha_i = take(alpha, i, "alpha")?;
                     #[expect(
                         clippy::indexing_slicing,
                         reason = "j stays below l, rows_active checked g, and q_i was cut to l"
@@ -646,7 +660,7 @@ impl<'a> Solver<'a> {
 
         #[expect(
             clippy::indexing_slicing,
-            reason = "j stays below active_size, and y, g, status, qd and each Q row were cut to that length"
+            reason = "j, ip and in_ come from 0..n; y, g, status, qd and each Q row were cut to n above"
         )]
         for j in 0..n {
             if y[j] == 1 {
@@ -734,78 +748,79 @@ impl<'a> Solver<'a> {
         let c_i = self.get_c(i)?;
         let c_j = self.get_c(j)?;
 
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "rows_active and the pair check cover i and j, and each Q row was cut to the active length"
-        )]
-        {
-            let old_alpha_i = self.alpha[i];
-            let old_alpha_j = self.alpha[j];
+        let y_i = take(&self.y, i, "y")?;
+        let y_j = take(&self.y, j, "y")?;
+        let qd_i = take(&self.qd, i, "qd")?;
+        let qd_j = take(&self.qd, j, "qd")?;
+        let g_i = take(&self.g, i, "g")?;
+        let g_j = take(&self.g, j, "g")?;
+        let q_ij = take(q_i, j, "q")?;
 
-            if self.y[i] != self.y[j] {
-                let mut quad_coef = self.qd[i] + self.qd[j] + 2.0 * f64::from(q_i[j]);
-                if quad_coef <= 0.0 {
-                    quad_coef = TAU;
-                }
-                let delta = (-self.g[i] - self.g[j]) / quad_coef;
-                let diff = self.alpha[i] - self.alpha[j];
-                self.alpha[i] += delta;
-                self.alpha[j] += delta;
+        let old_alpha_i = take(&self.alpha, i, "alpha")?;
+        let old_alpha_j = take(&self.alpha, j, "alpha")?;
 
-                if diff > 0.0 {
-                    if self.alpha[j] < 0.0 {
-                        self.alpha[j] = 0.0;
-                        self.alpha[i] = diff;
-                    }
-                } else if self.alpha[i] < 0.0 {
-                    self.alpha[i] = 0.0;
-                    self.alpha[j] = -diff;
-                }
-                if diff > c_i - c_j {
-                    if self.alpha[i] > c_i {
-                        self.alpha[i] = c_i;
-                        self.alpha[j] = c_i - diff;
-                    }
-                } else if self.alpha[j] > c_j {
-                    self.alpha[j] = c_j;
-                    self.alpha[i] = c_j + diff;
-                }
-            } else {
-                let mut quad_coef = self.qd[i] + self.qd[j] - 2.0 * f64::from(q_i[j]);
-                if quad_coef <= 0.0 {
-                    quad_coef = TAU;
-                }
-                let delta = (self.g[i] - self.g[j]) / quad_coef;
-                let sum = self.alpha[i] + self.alpha[j];
-                self.alpha[i] -= delta;
-                self.alpha[j] += delta;
-
-                if sum > c_i {
-                    if self.alpha[i] > c_i {
-                        self.alpha[i] = c_i;
-                        self.alpha[j] = sum - c_i;
-                    }
-                } else if self.alpha[j] < 0.0 {
-                    self.alpha[j] = 0.0;
-                    self.alpha[i] = sum;
-                }
-                if sum > c_j {
-                    if self.alpha[j] > c_j {
-                        self.alpha[j] = c_j;
-                        self.alpha[i] = sum - c_j;
-                    }
-                } else if self.alpha[i] < 0.0 {
-                    self.alpha[i] = 0.0;
-                    self.alpha[j] = sum;
-                }
+        if y_i != y_j {
+            let mut quad_coef = qd_i + qd_j + 2.0 * f64::from(q_ij);
+            if quad_coef <= 0.0 {
+                quad_coef = TAU;
             }
+            let delta = (-g_i - g_j) / quad_coef;
+            let diff = take(&self.alpha, i, "alpha")? - take(&self.alpha, j, "alpha")?;
+            *slot(&mut self.alpha, i, "alpha")? += delta;
+            *slot(&mut self.alpha, j, "alpha")? += delta;
 
-            let delta_alpha_i = self.alpha[i] - old_alpha_i;
-            let delta_alpha_j = self.alpha[j] - old_alpha_j;
-            let g = &mut self.g[..active_size];
-            for k in 0..active_size {
-                g[k] += f64::from(q_i[k]) * delta_alpha_i + f64::from(q_j[k]) * delta_alpha_j;
+            if diff > 0.0 {
+                if take(&self.alpha, j, "alpha")? < 0.0 {
+                    *slot(&mut self.alpha, j, "alpha")? = 0.0;
+                    *slot(&mut self.alpha, i, "alpha")? = diff;
+                }
+            } else if take(&self.alpha, i, "alpha")? < 0.0 {
+                *slot(&mut self.alpha, i, "alpha")? = 0.0;
+                *slot(&mut self.alpha, j, "alpha")? = -diff;
             }
+            if diff > c_i - c_j {
+                if take(&self.alpha, i, "alpha")? > c_i {
+                    *slot(&mut self.alpha, i, "alpha")? = c_i;
+                    *slot(&mut self.alpha, j, "alpha")? = c_i - diff;
+                }
+            } else if take(&self.alpha, j, "alpha")? > c_j {
+                *slot(&mut self.alpha, j, "alpha")? = c_j;
+                *slot(&mut self.alpha, i, "alpha")? = c_j + diff;
+            }
+        } else {
+            let mut quad_coef = qd_i + qd_j - 2.0 * f64::from(q_ij);
+            if quad_coef <= 0.0 {
+                quad_coef = TAU;
+            }
+            let delta = (g_i - g_j) / quad_coef;
+            let sum = take(&self.alpha, i, "alpha")? + take(&self.alpha, j, "alpha")?;
+            *slot(&mut self.alpha, i, "alpha")? -= delta;
+            *slot(&mut self.alpha, j, "alpha")? += delta;
+
+            if sum > c_i {
+                if take(&self.alpha, i, "alpha")? > c_i {
+                    *slot(&mut self.alpha, i, "alpha")? = c_i;
+                    *slot(&mut self.alpha, j, "alpha")? = sum - c_i;
+                }
+            } else if take(&self.alpha, j, "alpha")? < 0.0 {
+                *slot(&mut self.alpha, j, "alpha")? = 0.0;
+                *slot(&mut self.alpha, i, "alpha")? = sum;
+            }
+            if sum > c_j {
+                if take(&self.alpha, j, "alpha")? > c_j {
+                    *slot(&mut self.alpha, j, "alpha")? = c_j;
+                    *slot(&mut self.alpha, i, "alpha")? = sum - c_j;
+                }
+            } else if take(&self.alpha, i, "alpha")? < 0.0 {
+                *slot(&mut self.alpha, i, "alpha")? = 0.0;
+                *slot(&mut self.alpha, j, "alpha")? = sum;
+            }
+        }
+
+        let delta_alpha_i = take(&self.alpha, i, "alpha")? - old_alpha_i;
+        let delta_alpha_j = take(&self.alpha, j, "alpha")? - old_alpha_j;
+        for ((g_k, &q_ik), &q_jk) in self.g.iter_mut().zip(q_i).zip(q_j) {
+            *g_k += f64::from(q_ik) * delta_alpha_i + f64::from(q_jk) * delta_alpha_j;
         }
 
         let ui = take(&self.alpha_status, i, "status")? == AlphaStatus::UpperBound;
@@ -819,15 +834,13 @@ impl<'a> Solver<'a> {
         if ui != ui_now {
             let q_i_full = self.q.get_q(i, l).to_vec();
             let q_i_full = cut(&q_i_full, l, "q")?;
-            #[expect(
-                clippy::indexing_slicing,
-                reason = "k stays below l, rows_active checked g_bar, and the Q row was cut to l"
-            )]
-            for k in 0..l {
-                if ui {
-                    self.g_bar[k] -= c_i * f64::from(q_i_full[k]);
-                } else {
-                    self.g_bar[k] += c_i * f64::from(q_i_full[k]);
+            if ui {
+                for (g_bar_k, &q_k) in self.g_bar.iter_mut().zip(q_i_full) {
+                    *g_bar_k -= c_i * f64::from(q_k);
+                }
+            } else {
+                for (g_bar_k, &q_k) in self.g_bar.iter_mut().zip(q_i_full) {
+                    *g_bar_k += c_i * f64::from(q_k);
                 }
             }
         }
@@ -835,15 +848,13 @@ impl<'a> Solver<'a> {
         if uj != uj_now {
             let q_j_full = self.q.get_q(j, l).to_vec();
             let q_j_full = cut(&q_j_full, l, "q")?;
-            #[expect(
-                clippy::indexing_slicing,
-                reason = "k stays below l, rows_active checked g_bar, and the Q row was cut to l"
-            )]
-            for k in 0..l {
-                if uj {
-                    self.g_bar[k] -= c_j * f64::from(q_j_full[k]);
-                } else {
-                    self.g_bar[k] += c_j * f64::from(q_j_full[k]);
+            if uj {
+                for (g_bar_k, &q_k) in self.g_bar.iter_mut().zip(q_j_full) {
+                    *g_bar_k -= c_j * f64::from(q_k);
+                }
+            } else {
+                for (g_bar_k, &q_k) in self.g_bar.iter_mut().zip(q_j_full) {
+                    *g_bar_k += c_j * f64::from(q_k);
                 }
             }
         }
@@ -872,7 +883,7 @@ impl<'a> Solver<'a> {
 
     #[expect(
         clippy::arithmetic_side_effects,
-        reason = "the index stays below the row count, and the active count stays at least one"
+        reason = "active_size is positive before subtraction; i is below the old active_size <= l before increment"
     )]
     fn do_shrinking_standard(&mut self) -> Result<(), RowFault> {
         self.rows_active()?;
@@ -913,26 +924,31 @@ impl<'a> Solver<'a> {
 
         let mut i = 0;
         while i < self.active_size {
-            let y_i = take(&self.y, i, "y")?;
-            let g_i = take(&self.g, i, "g")?;
-            let status_i = take(&self.alpha_status, i, "status")?;
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "rows_active checked y, g and status through l; i < active_size <= l"
+            )]
+            let (y_i, g_i, status_i) = (self.y[i], self.g[i], self.alpha_status[i]);
             if Self::be_shrunk_standard(y_i, g_i, status_i, gmax1, gmax2) {
-                // The active count is at least one, so subtracting one fits.
+                // i < active_size, so the active count is positive before subtraction.
                 self.active_size -= 1;
                 while self.active_size > i {
                     let tail = self.active_size;
-                    let y_t = take(&self.y, tail, "y")?;
-                    let g_t = take(&self.g, tail, "g")?;
-                    let status_t = take(&self.alpha_status, tail, "status")?;
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "rows_active checked y, g and status through l; tail is below the old active_size <= l"
+                    )]
+                    let (y_t, g_t, status_t) =
+                        (self.y[tail], self.g[tail], self.alpha_status[tail]);
                     if !Self::be_shrunk_standard(y_t, g_t, status_t, gmax1, gmax2) {
                         self.swap_index(i, tail)?;
                         break;
                     }
-                    // The active count stays above the index, so subtracting one fits.
+                    // active_size > i, so the active count is positive before subtraction.
                     self.active_size -= 1;
                 }
             }
-            // The index stays below the active row count, so adding one fits.
+            // i < the old active_size <= l <= isize::MAX, so adding one fits.
             i += 1;
         }
         Ok(())
@@ -959,7 +975,7 @@ impl<'a> Solver<'a> {
 
     #[expect(
         clippy::arithmetic_side_effects,
-        reason = "the index stays below the row count, and the active count stays at least one"
+        reason = "active_size is positive before subtraction; i is below the old active_size <= l before increment"
     )]
     fn do_shrinking_nu(&mut self) -> Result<(), RowFault> {
         self.rows_active()?;
@@ -1005,26 +1021,31 @@ impl<'a> Solver<'a> {
 
         let mut i = 0;
         while i < self.active_size {
-            let y_i = take(&self.y, i, "y")?;
-            let g_i = take(&self.g, i, "g")?;
-            let status_i = take(&self.alpha_status, i, "status")?;
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "rows_active checked y, g and status through l; i < active_size <= l"
+            )]
+            let (y_i, g_i, status_i) = (self.y[i], self.g[i], self.alpha_status[i]);
             if Self::be_shrunk_nu(y_i, g_i, status_i, gmax1, gmax2, gmax3, gmax4) {
-                // The active count is at least one, so subtracting one fits.
+                // i < active_size, so the active count is positive before subtraction.
                 self.active_size -= 1;
                 while self.active_size > i {
                     let tail = self.active_size;
-                    let y_t = take(&self.y, tail, "y")?;
-                    let g_t = take(&self.g, tail, "g")?;
-                    let status_t = take(&self.alpha_status, tail, "status")?;
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "rows_active checked y, g and status through l; tail is below the old active_size <= l"
+                    )]
+                    let (y_t, g_t, status_t) =
+                        (self.y[tail], self.g[tail], self.alpha_status[tail]);
                     if !Self::be_shrunk_nu(y_t, g_t, status_t, gmax1, gmax2, gmax3, gmax4) {
                         self.swap_index(i, tail)?;
                         break;
                     }
-                    // The active count stays above the index, so subtracting one fits.
+                    // active_size > i, so the active count is positive before subtraction.
                     self.active_size -= 1;
                 }
             }
-            // The index stays below the active row count, so adding one fits.
+            // i < the old active_size <= l <= isize::MAX, so adding one fits.
             i += 1;
         }
         Ok(())
@@ -1045,7 +1066,7 @@ impl<'a> Solver<'a> {
     )]
     #[expect(
         clippy::arithmetic_side_effects,
-        reason = "nr_free counts active rows in the same i32 range as C"
+        reason = "each free-row count is at most active_size <= l <= isize::MAX"
     )]
     fn calculate_rho_standard(&self) -> Result<f64, RowFault> {
         self.rows_active()?;
@@ -1053,7 +1074,7 @@ impl<'a> Solver<'a> {
         let y = cut(&self.y, n, "y")?;
         let g = cut(&self.g, n, "g")?;
         let status = cut(&self.alpha_status, n, "status")?;
-        let mut nr_free: i32 = 0;
+        let mut nr_free: usize = 0;
         let mut ub = INF;
         let mut lb = -INF;
         let mut sum_free = 0.0;
@@ -1078,14 +1099,19 @@ impl<'a> Solver<'a> {
                     lb = lb.max(yg);
                 }
             } else {
-                // The count stays in the same i32 range as C.
+                // The count is at most active_size, so adding one fits.
                 nr_free += 1;
                 sum_free += yg;
             }
         }
 
         if nr_free > 0 {
-            Ok(sum_free / f64::from(nr_free))
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "the row count is converted once at division, exactly for every count that fits i32"
+            )]
+            let count = nr_free as f64;
+            Ok(sum_free / count)
         } else {
             Ok((ub + lb) / 2.0)
         }
@@ -1097,7 +1123,7 @@ impl<'a> Solver<'a> {
     )]
     #[expect(
         clippy::arithmetic_side_effects,
-        reason = "nr_free counts active rows in the same i32 range as C"
+        reason = "each free-row count is at most active_size <= l <= isize::MAX"
     )]
     fn calculate_rho_nu(&self) -> Result<(f64, f64), RowFault> {
         self.rows_active()?;
@@ -1105,8 +1131,8 @@ impl<'a> Solver<'a> {
         let y = cut(&self.y, n, "y")?;
         let g = cut(&self.g, n, "g")?;
         let status = cut(&self.alpha_status, n, "status")?;
-        let mut nr_free1: i32 = 0;
-        let mut nr_free2: i32 = 0;
+        let mut nr_free1: usize = 0;
+        let mut nr_free2: usize = 0;
         let mut ub1 = INF;
         let mut ub2 = INF;
         let mut lb1 = -INF;
@@ -1125,7 +1151,7 @@ impl<'a> Solver<'a> {
                 } else if status[i] == AlphaStatus::LowerBound {
                     ub1 = ub1.min(g[i]);
                 } else {
-                    // The count stays in the same i32 range as C.
+                    // The count is at most active_size, so adding one fits.
                     nr_free1 += 1;
                     sum_free1 += g[i];
                 }
@@ -1134,20 +1160,30 @@ impl<'a> Solver<'a> {
             } else if status[i] == AlphaStatus::LowerBound {
                 ub2 = ub2.min(g[i]);
             } else {
-                // The count stays in the same i32 range as C.
+                // The count is at most active_size, so adding one fits.
                 nr_free2 += 1;
                 sum_free2 += g[i];
             }
         }
 
         let r1 = if nr_free1 > 0 {
-            sum_free1 / f64::from(nr_free1)
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "the row count is converted once at division, exactly for every count that fits i32"
+            )]
+            let count = nr_free1 as f64;
+            sum_free1 / count
         } else {
             (ub1 + lb1) / 2.0
         };
 
         let r2 = if nr_free2 > 0 {
-            sum_free2 / f64::from(nr_free2)
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "the row count is converted once at division, exactly for every count that fits i32"
+            )]
+            let count = nr_free2 as f64;
+            sum_free2 / count
         } else {
             (ub2 + lb2) / 2.0
         };

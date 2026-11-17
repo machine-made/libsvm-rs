@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Improved
 
 - The kernel, the cache, and the Q matrix lost their module-wide exemptions for indexing and for integer arithmetic. Checked access replaced raw indexing in private code. Each remaining raw access kept one single-site exception. The exception named the guarantee.
-- The solver lost its module-wide exemptions for indexing and for integer arithmetic. Checked access replaced raw indexing in private code. Each remaining raw access kept one single-site exception. The exception named the guarantee.
+- The solver lost its module-wide exemptions for indexing and for integer arithmetic. Private code checks vector lengths before hot loops and swaps. The remaining indexing exceptions name the bounds that protect each access.
 
 ### Changed
 
