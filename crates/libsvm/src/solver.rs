@@ -135,6 +135,7 @@ impl<'a> Solver<'a> {
     /// # Panics
     ///
     /// The call panics when `p_`, `y_`, `alpha_`, or the Q diagonal is shorter than `l`.
+    /// The call panics when `l` is above 2^53, the largest row count whose free-row counts convert exactly to `f64`.
     /// The call panics when a solver vector is shorter than its index.
     /// The call panics when `alpha_` does not cover an active-set index.
     /// The call panics when a Q row is shorter than the requested length.
@@ -161,7 +162,13 @@ impl<'a> Solver<'a> {
     ) -> SolutionInfo {
         Self::run(variant, l, q, p_, y_, alpha_, cp, cn, eps, shrinking)
             .map_err(|RowFault { name, index, len }| {
-                format!("solver row {name} does not cover index {index} of length {len}")
+                if name == "l" {
+                    format!(
+                        "the row count {index} is above 2^53, the largest count that converts exactly to f64; solve fewer rows"
+                    )
+                } else {
+                    format!("solver row {name} does not cover index {index} of length {len}")
+                }
             })
             .expect("each solver vector covers its index")
     }
@@ -1295,6 +1302,29 @@ mod tests {
     fn slot_rejects_a_missing_index() {
         let mut row = [0.0, 1.0];
         assert_fault(slot(&mut row[..], 3, "alpha").map(|_| ()), "alpha", 3, 2);
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    #[should_panic(expected = "above 2^53")]
+    fn solve_panics_with_a_clear_message_above_two_to_the_53_rows() {
+        let q: Box<dyn QMatrix> = Box::new(StubQ {
+            qd: vec![1.0; 2],
+            row: vec![0.0; 2],
+        });
+        let mut alpha = vec![0.0; 2];
+        let _ = Solver::solve(
+            SolverVariant::Standard,
+            usize::MAX,
+            q,
+            &[0.0; 2],
+            &[1_i8; 2],
+            &mut alpha,
+            1.0,
+            1.0,
+            0.001,
+            true,
+        );
     }
 
     #[cfg(target_pointer_width = "64")]
