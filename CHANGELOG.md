@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Tied prediction votes now choose the first class with the largest count, as in C LIBSVM. A one-member class now draws one random value during shuffling, as in C. This changes later stratified cross-validation folds for problems with such a class.
+
 - The model loader and the model writer now reject a precomputed-kernel sample serial number above `i32::MAX`. Before, the loader accepted it and the writer silently wrote `2147483647`. C LIBSVM casts the serial to an `int` wherever it uses it. The errors of the loader, the writer and `check_parameter` name the value and the limit. `save_model` checks every serial before it creates the file, so a failed save no longer truncates an existing model file.
 
 ## [0.9.2] - 2026-10-31

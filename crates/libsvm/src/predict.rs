@@ -109,11 +109,14 @@ fn try_predict_values(model: &SvmModel, x: &[SvmNode], dec_values: &mut [f64]) -
             }
 
             // Find class with most votes
-            let vote_max_idx = vote
-                .iter()
-                .enumerate()
-                .max_by_key(|&(_, &v)| v)
-                .map_or(0, |(i, _)| i);
+            let mut vote_max_idx = 0;
+            let mut most_votes = *vote.first()?;
+            for (i, &count) in vote.iter().enumerate().skip(1) {
+                if count > most_votes {
+                    vote_max_idx = i;
+                    most_votes = count;
+                }
+            }
 
             Some(f64::from(*labels.get(vote_max_idx)?))
         }
@@ -281,6 +284,29 @@ mod tests {
     use crate::io::load_model;
     use crate::io::load_problem;
     use std::path::PathBuf;
+
+    #[test]
+    fn predict_vote_tie_takes_the_first_label() {
+        let model = SvmModel {
+            param: crate::SvmParameter::default(),
+            nr_class: 3,
+            sv: Vec::new(),
+            sv_coef: vec![Vec::new(), Vec::new()],
+            rho: vec![-1.0, 1.0, -1.0],
+            prob_a: Vec::new(),
+            prob_b: Vec::new(),
+            prob_density_marks: Vec::new(),
+            sv_indices: Vec::new(),
+            label: vec![7, -3, 2],
+            n_sv: vec![0, 0, 0],
+        };
+        let mut decisions = [0.0; 3];
+        let label = predict_values(&model, &[], &mut decisions);
+        // The pairs (0, 1), (0, 2), (1, 2) vote for classes 0, 2, 1.
+        assert_eq!(decisions, [1.0, -1.0, 1.0]);
+        assert_eq!(label, 7.0, "one vote per class must keep the first label");
+        assert_eq!(predict(&model, &[]), 7.0);
+    }
 
     #[test]
     fn pair_count_rejects_overflow() {

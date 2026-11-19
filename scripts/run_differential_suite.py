@@ -37,11 +37,13 @@ class Case:
     svm_type: int
     kernel: int
     profile: str
+    folds: Optional[int] = None
 
     @property
     def id(self) -> str:
         ds = self.dataset.name.replace(".", "_")
-        return f"{ds}_s{self.svm_type}_t{self.kernel}_{self.profile}"
+        suffix = f"_cv{self.folds}" if self.folds is not None else ""
+        return f"{ds}_s{self.svm_type}_t{self.kernel}_{self.profile}{suffix}"
 
 
 def env_float_or_default(name: str, default: float) -> float:
@@ -643,6 +645,17 @@ def main() -> None:
                 for profile in profiles:
                     cases.append(Case(dataset=ds, svm_type=svm_type, kernel=kernel, profile=profile))
 
+    cases.extend([
+        Case(
+            dataset=DatasetEntry("vote_tie.scale", "data/vote_tie.scale", "classification", False, "generated"),
+            svm_type=0, kernel=0, profile="default",
+        ),
+        Case(
+            dataset=DatasetEntry("single_member.scale", "data/single_member.scale", "classification", False, "generated"),
+            svm_type=0, kernel=0, profile="default", folds=3,
+        ),
+    ])
+
     result_cases: List[Dict[str, object]] = []
     counts = {"pass": 0, "warn": 0, "fail": 0, "skip": 0}
 
@@ -671,6 +684,38 @@ def main() -> None:
 
         extra = extra_args_for(case.profile, case.svm_type, case.kernel)
         base_opts = ["-q", "-s", str(case.svm_type), "-t", str(case.kernel), *extra]
+
+        if case.folds is not None:
+            # Store the printed accuracy as a scalar for the existing ULP exporter.
+            errors = []
+            for train, output in ((c_train, c_pred), (rust_train, r_pred)):
+                proc = subprocess.run(
+                    [str(train), *base_opts, "-v", str(case.folds), str(data_path)],
+                    capture_output=True, text=True, check=False,
+                )
+                prefix = "Cross Validation Accuracy = "
+                text = proc.stdout.strip()
+                if proc.returncode != 0 or not text.startswith(prefix) or not text.endswith("%"):
+                    errors.append(f"{train.name}: cross-validation failed: {text}; {proc.stderr.strip()}")
+                    continue
+                value = text[len(prefix):-1]
+                # Reject malformed output before it reaches the numeric exporter.
+                float(value)
+                output.write_text(value + "\n", encoding="utf-8")
+            diff = "; ".join(errors) if errors else compare_label_file(c_pred, r_pred)
+            status = "fail" if diff else "pass"
+            result_cases.append({
+                "id": case.id,
+                "dataset": case.dataset.rel_path,
+                "svm_type": case.svm_type,
+                "kernel": case.kernel,
+                "profile": case.profile,
+                "folds": case.folds,
+                "status": status,
+                "reason": diff or "cross-validation accuracy matches C",
+            })
+            counts[status] += 1
+            continue
 
         c_train_cmd = [str(c_train), *base_opts, str(data_path), str(c_model)]
         r_train_cmd = [str(rust_train), *base_opts, str(data_path), str(r_model)]

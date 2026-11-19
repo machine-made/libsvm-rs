@@ -164,35 +164,16 @@ fn first_empty_training_fold(
         .position(|bounds| matches!(bounds, [begin, end] if end.checked_sub(*begin) == Some(rows)))
 }
 
-/// Returns `None` for inconsistent inputs and `Some(Err(message))` for a classification
-/// fold with no training rows. The message is the text of the panic in the caller.
-fn try_cross_validation(
-    prob: &SvmProblem,
+// The caller has checked row lengths and normalized the fold count.
+pub(crate) fn cross_validation_folds(
+    labels: &[f64],
     param: &SvmParameter,
-    mut nr_fold: usize,
-) -> Option<Result<Vec<f64>, String>> {
-    let l = prob.labels.len();
-    if prob.instances.len() != l || l as u128 > (1u128 << 53) {
-        return None;
-    }
-    if l == 0 {
-        return Some(Ok(Vec::new()));
-    }
-    if nr_fold == 0 {
-        crate::info(
-            "WARNING: # folds (0) <= 0. Will use # folds = # data instead (i.e., leave-one-out cross validation)\n",
-        );
-        nr_fold = l;
-    }
-    if nr_fold > l {
-        crate::info(&format!(
-            "WARNING: # folds ({nr_fold}) > # data ({l}). Will use # folds = # data instead (i.e., leave-one-out cross validation)\n"
-        ));
-        nr_fold = l;
-    }
+    nr_fold: usize,
+) -> Option<(Vec<usize>, Vec<usize>)> {
+    let l = labels.len();
     let mut perm: Vec<usize> = (0..l).collect();
     let fold_start = if is_stratified_cv(param, nr_fold, l) {
-        let grouped = group_classes(&prob.labels)?;
+        let grouped = group_classes(labels)?;
         let mut index = grouped.perm;
         for (&start, &count) in grouped.start.iter().zip(&grouped.count) {
             shuffle_range(&mut index, start, count)?;
@@ -235,6 +216,36 @@ fn try_cross_validation(
             .collect::<Option<_>>()?;
         fold_starts(&counts)?
     };
+    Some((perm, fold_start))
+}
+
+/// Returns `None` for inconsistent inputs and `Some(Err(message))` for a classification
+/// fold with no training rows. The message is the text of the panic in the caller.
+fn try_cross_validation(
+    prob: &SvmProblem,
+    param: &SvmParameter,
+    mut nr_fold: usize,
+) -> Option<Result<Vec<f64>, String>> {
+    let l = prob.labels.len();
+    if prob.instances.len() != l || l as u128 > (1u128 << 53) {
+        return None;
+    }
+    if l == 0 {
+        return Some(Ok(Vec::new()));
+    }
+    if nr_fold == 0 {
+        crate::info(
+            "WARNING: # folds (0) <= 0. Will use # folds = # data instead (i.e., leave-one-out cross validation)\n",
+        );
+        nr_fold = l;
+    }
+    if nr_fold > l {
+        crate::info(&format!(
+            "WARNING: # folds ({nr_fold}) > # data ({l}). Will use # folds = # data instead (i.e., leave-one-out cross validation)\n"
+        ));
+        nr_fold = l;
+    }
+    let (perm, fold_start) = cross_validation_folds(&prob.labels, param, nr_fold)?;
     if let Some(fold) = first_empty_training_fold(param, &fold_start, l) {
         return Some(Err(format!(
             "fold {} of {nr_fold} has no training rows; use more folds, up to one per row, or add more rows",
