@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Improved
 
+- Training, prediction, probability, model I/O, cross-validation, utilities, and types lost their module-wide indexing and integer arithmetic exemptions. Private code checks lengths before hot loops. Public signatures stay unchanged.
 - The kernel, the cache, and the Q matrix lost their module-wide exemptions for indexing and for integer arithmetic. Checked access replaced raw indexing in private code. Each remaining raw access kept one single-site exception. The exception named the guarantee.
 - The solver lost its module-wide exemptions for indexing and for integer arithmetic. Private code checks vector lengths before hot loops and swaps. The remaining indexing exceptions name the bounds that protect each access. A solve with more than 2^53 rows panics with a message that names the limit, so the free-row counts convert exactly to `f64`.
 
@@ -21,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - The minimum Rust version rose from 1.80 to 1.85 because edition 2024 needs it
 - Training, prediction, metric and model-getter functions carry `#[must_use]`, so a caller that drops their result gets a warning
+- Inputs that earlier versions tolerated now panic with a message. One case is one-class training with a different number of labels than instances, or regression training with more labels than instances. Another is prediction with a hand-built model whose `n_sv` sums to less than its support vector count. The documented requirements do not change.
 - GitHub issues are enabled again. `NOTICE` points bug reports and ideas to the issue tracker. `NOTICE` and `SECURITY.md` keep vulnerability reports on the private advisory form.
 
 ### Fixed

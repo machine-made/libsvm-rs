@@ -7,16 +7,8 @@
     test,
     expect(
         clippy::unwrap_used,
-        reason = "Checked access is not yet done in this module; remove this line when it is"
+        reason = "Tests unwrap fixture loading and checked assertions"
     )
-)]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
-)]
-#![expect(
-    clippy::arithmetic_side_effects,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
 )]
 
 use crate::qmatrix::{OneClassQ, SvcQ, SvrQ};
@@ -37,6 +29,15 @@ fn sign_labels(labels: &[f64]) -> Vec<i8> {
         .collect()
 }
 
+// Reject counts before converting them to f64 or allocating doubled SVR arrays.
+fn solver_rows(rows: usize, multiplier: usize) -> Option<usize> {
+    let count = rows.checked_mul(multiplier)?;
+    if count as u128 > (1u128 << 53) {
+        return None;
+    }
+    Some(count)
+}
+
 // ─── Solve dispatchers ──────────────────────────────────────────────
 
 #[expect(
@@ -49,10 +50,13 @@ fn solve_c_svc(
     param: &SvmParameter,
     cp: f64,
     cn: f64,
-) -> (Vec<f64>, SolutionInfo) {
-    let l = x.len();
+) -> Option<(Vec<f64>, SolutionInfo)> {
+    let l = solver_rows(x.len(), 1)?;
     let mut alpha = vec![0.0; l];
     let p: Vec<f64> = vec![-1.0; l];
+    if labels.len() != l {
+        return None;
+    }
     let y = sign_labels(labels);
 
     let q = Box::new(SvcQ::new(x, param, &y));
@@ -70,11 +74,11 @@ fn solve_c_svc(
     );
 
     // Multiply alpha by y to get signed coefficients
-    for i in 0..l {
-        alpha[i] *= f64::from(y[i]);
+    for (a, &sign) in alpha.iter_mut().zip(&y) {
+        *a *= f64::from(sign);
     }
 
-    (alpha, si)
+    Some((alpha, si))
 }
 
 #[expect(
@@ -89,22 +93,25 @@ fn solve_nu_svc(
     x: &[Vec<SvmNode>],
     labels: &[f64],
     param: &SvmParameter,
-) -> (Vec<f64>, SolutionInfo) {
-    let l = x.len();
+) -> Option<(Vec<f64>, SolutionInfo)> {
+    let l = solver_rows(x.len(), 1)?;
     let nu = param.nu;
+    if labels.len() != l {
+        return None;
+    }
     let y = sign_labels(labels);
 
     // Initialize alpha: spread nu*l/2 among positive and negative samples
     let mut alpha = vec![0.0; l];
     let mut sum_pos = nu * l as f64 / 2.0;
     let mut sum_neg = nu * l as f64 / 2.0;
-    for i in 0..l {
-        if y[i] == 1 {
-            alpha[i] = f64::min(1.0, sum_pos);
-            sum_pos -= alpha[i];
+    for (a, &sign) in alpha.iter_mut().zip(&y) {
+        if sign == 1 {
+            *a = f64::min(1.0, sum_pos);
+            sum_pos -= *a;
         } else {
-            alpha[i] = f64::min(1.0, sum_neg);
-            sum_neg -= alpha[i];
+            *a = f64::min(1.0, sum_neg);
+            sum_neg -= *a;
         }
     }
 
@@ -124,15 +131,15 @@ fn solve_nu_svc(
     );
 
     let r = si.r;
-    for i in 0..l {
-        alpha[i] *= f64::from(y[i]) / r;
+    for (a, &sign) in alpha.iter_mut().zip(&y) {
+        *a *= f64::from(sign) / r;
     }
     si.rho /= r;
     si.obj /= r * r;
     si.upper_bound_p = 1.0 / r;
     si.upper_bound_n = 1.0 / r;
 
-    (alpha, si)
+    Some((alpha, si))
 }
 
 #[expect(
@@ -151,8 +158,8 @@ fn solve_nu_svc(
     clippy::many_single_char_names,
     reason = "The C solver uses these short names"
 )]
-fn solve_one_class(x: &[Vec<SvmNode>], param: &SvmParameter) -> (Vec<f64>, SolutionInfo) {
-    let l = x.len();
+fn solve_one_class(x: &[Vec<SvmNode>], param: &SvmParameter) -> Option<(Vec<f64>, SolutionInfo)> {
+    let l = solver_rows(x.len(), 1)?;
 
     // Initialize alpha: first n=floor(nu*l) at 1, fractional remainder, rest 0
     let n = (param.nu * l as f64) as usize;
@@ -161,7 +168,7 @@ fn solve_one_class(x: &[Vec<SvmNode>], param: &SvmParameter) -> (Vec<f64>, Solut
         *a = 1.0;
     }
     if n < l {
-        alpha[n] = param.nu * l as f64 - n as f64;
+        *alpha.get_mut(n)? = param.nu * l as f64 - n as f64;
     }
 
     let p = vec![0.0; l];
@@ -180,30 +187,41 @@ fn solve_one_class(x: &[Vec<SvmNode>], param: &SvmParameter) -> (Vec<f64>, Solut
         param.shrinking,
     );
 
-    (alpha, si)
+    Some((alpha, si))
 }
 
 fn solve_epsilon_svr(
     x: &[Vec<SvmNode>],
     labels: &[f64],
     param: &SvmParameter,
-) -> (Vec<f64>, SolutionInfo) {
-    let l = x.len();
-    let mut alpha2 = vec![0.0; 2 * l];
-    let mut linear_term = vec![0.0; 2 * l];
-    let mut y = vec![0i8; 2 * l];
+) -> Option<(Vec<f64>, SolutionInfo)> {
+    let l = solver_rows(x.len(), 1)?;
+    if labels.len() != l {
+        return None;
+    }
+    let doubled = solver_rows(l, 2)?;
+    let mut alpha2 = vec![0.0; doubled];
+    let mut linear_term = vec![0.0; doubled];
+    let mut y = vec![0i8; doubled];
 
-    for i in 0..l {
-        linear_term[i] = param.p - labels[i];
-        y[i] = 1;
-        linear_term[i + l] = param.p + labels[i];
-        y[i + l] = -1;
+    let (linear_pos, linear_neg) = linear_term.split_at_mut_checked(l)?;
+    let (y_pos, y_neg) = y.split_at_mut_checked(l)?;
+    for (((lp, ln), (yp, yn)), &label) in linear_pos
+        .iter_mut()
+        .zip(linear_neg)
+        .zip(y_pos.iter_mut().zip(y_neg))
+        .zip(labels)
+    {
+        *lp = param.p - label;
+        *yp = 1;
+        *ln = param.p + label;
+        *yn = -1;
     }
 
     let q = Box::new(SvrQ::new(x, param));
     let si = Solver::solve(
         SolverVariant::Standard,
-        2 * l,
+        doubled,
         q,
         &linear_term,
         &y,
@@ -215,11 +233,12 @@ fn solve_epsilon_svr(
     );
 
     let mut alpha = vec![0.0; l];
-    for i in 0..l {
-        alpha[i] = alpha2[i] - alpha2[i + l];
+    let (positive, negative) = alpha2.split_at_checked(l)?;
+    for (a, (&pos, &neg)) in alpha.iter_mut().zip(positive.iter().zip(negative)) {
+        *a = pos - neg;
     }
 
-    (alpha, si)
+    Some((alpha, si))
 }
 
 #[expect(
@@ -234,30 +253,42 @@ fn solve_nu_svr(
     x: &[Vec<SvmNode>],
     labels: &[f64],
     param: &SvmParameter,
-) -> (Vec<f64>, SolutionInfo) {
-    let l = x.len();
+) -> Option<(Vec<f64>, SolutionInfo)> {
+    let l = solver_rows(x.len(), 1)?;
     let c = param.c;
-    let mut alpha2 = vec![0.0; 2 * l];
-    let mut linear_term = vec![0.0; 2 * l];
-    let mut y = vec![0i8; 2 * l];
+    if labels.len() != l {
+        return None;
+    }
+    let doubled = solver_rows(l, 2)?;
+    let mut alpha2 = vec![0.0; doubled];
+    let mut linear_term = vec![0.0; doubled];
+    let mut y = vec![0i8; doubled];
 
     let mut sum = c * param.nu * l as f64 / 2.0;
-    for i in 0..l {
+    let (alpha_pos, alpha_neg) = alpha2.split_at_mut_checked(l)?;
+    let (linear_pos, linear_neg) = linear_term.split_at_mut_checked(l)?;
+    let (y_pos, y_neg) = y.split_at_mut_checked(l)?;
+    for ((((ap, an), (lp, ln)), (yp, yn)), &label) in alpha_pos
+        .iter_mut()
+        .zip(alpha_neg)
+        .zip(linear_pos.iter_mut().zip(linear_neg))
+        .zip(y_pos.iter_mut().zip(y_neg))
+        .zip(labels)
+    {
         let a = f64::min(sum, c);
-        alpha2[i] = a;
-        alpha2[i + l] = a;
+        *ap = a;
+        *an = a;
         sum -= a;
-
-        linear_term[i] = -labels[i];
-        y[i] = 1;
-        linear_term[i + l] = labels[i];
-        y[i + l] = -1;
+        *lp = -label;
+        *yp = 1;
+        *ln = label;
+        *yn = -1;
     }
 
     let q = Box::new(SvrQ::new(x, param));
     let si = Solver::solve(
         SolverVariant::Nu,
-        2 * l,
+        doubled,
         q,
         &linear_term,
         &y,
@@ -269,11 +300,12 @@ fn solve_nu_svr(
     );
 
     let mut alpha = vec![0.0; l];
-    for i in 0..l {
-        alpha[i] = alpha2[i] - alpha2[i + l];
+    let (positive, negative) = alpha2.split_at_checked(l)?;
+    for (a, (&pos, &neg)) in alpha.iter_mut().zip(positive.iter().zip(negative)) {
+        *a = pos - neg;
     }
 
-    (alpha, si)
+    Some((alpha, si))
 }
 
 // ─── svm_train_one ──────────────────────────────────────────────────
@@ -288,14 +320,17 @@ fn svm_train_one(
     param: &SvmParameter,
     cp: f64,
     cn: f64,
-) -> DecisionFunction {
+) -> Option<DecisionFunction> {
+    if x.len() != labels.len() {
+        return None;
+    }
     let (alpha, si) = match param.svm_type {
         SvmType::CSvc => solve_c_svc(x, labels, param, cp, cn),
         SvmType::NuSvc => solve_nu_svc(x, labels, param),
         SvmType::OneClass => solve_one_class(x, param),
         SvmType::EpsilonSvr => solve_epsilon_svr(x, labels, param),
         SvmType::NuSvr => solve_nu_svr(x, labels, param),
-    };
+    }?;
 
     crate::info(&format!("obj = {:.6}, rho = {:.6}\n", si.obj, si.rho));
 
@@ -303,10 +338,10 @@ fn svm_train_one(
     let n_sv = alpha.iter().filter(|a| a.abs() > 0.0).count();
     let n_bsv = alpha
         .iter()
-        .enumerate()
-        .filter(|&(i, a)| {
+        .zip(labels)
+        .filter(|&(a, &label)| {
             if a.abs() > 0.0 {
-                if labels[i] > 0.0 {
+                if label > 0.0 {
                     a.abs() >= si.upper_bound_p
                 } else {
                     a.abs() >= si.upper_bound_n
@@ -318,23 +353,23 @@ fn svm_train_one(
         .count();
     crate::info(&format!("nSV = {n_sv}, nBSV = {n_bsv}\n"));
 
-    DecisionFunction { alpha, rho: si.rho }
+    Some(DecisionFunction { alpha, rho: si.rho })
 }
 
-fn mark_nonzero_indices(nonzero: &mut [bool], start: usize, alphas: &[f64]) {
-    for (offset, &alpha) in alphas.iter().enumerate() {
-        let idx = start + offset;
-        if !nonzero[idx] && alpha.abs() > 0.0 {
-            nonzero[idx] = true;
+fn mark_nonzero_indices(nonzero: &mut [bool], start: usize, alphas: &[f64]) -> Option<()> {
+    let end = start.checked_add(alphas.len())?;
+    let slots = nonzero.get_mut(start..end)?;
+    for (slot, &alpha) in slots.iter_mut().zip(alphas) {
+        if !*slot && alpha.abs() > 0.0 {
+            *slot = true;
         }
     }
+    Some(())
 }
 
-fn count_nonzero(nonzero: &[bool], start: usize, len: usize) -> usize {
-    nonzero[start..start + len]
-        .iter()
-        .filter(|&&is_nonzero| is_nonzero)
-        .count()
+fn count_nonzero(nonzero: &[bool], start: usize, len: usize) -> Option<usize> {
+    let end = start.checked_add(len)?;
+    Some(nonzero.get(start..end)?.iter().filter(|&&v| v).count())
 }
 
 // ─── svm_train ──────────────────────────────────────────────────────
@@ -366,6 +401,10 @@ fn count_nonzero(nonzero: &[bool], start: usize, len: usize) -> usize {
 /// assert_eq!(model.svm_type(), SvmType::CSvc);
 /// # Ok::<(), libsvm_rs::SvmError>(())
 /// ```
+/// # Panics
+///
+/// Panics for empty classification input, unequal label and instance lengths, overflowing counts,
+/// solver rows above 2^53, or inconsistent internal class offsets.
 #[must_use]
 pub fn svm_train(problem: &SvmProblem, param: &SvmParameter) -> SvmModel {
     // Compute effective gamma if zero
@@ -383,27 +422,33 @@ pub fn svm_train(problem: &SvmProblem, param: &SvmParameter) -> SvmModel {
         }
     }
 
-    match param.svm_type {
+    let model = match param.svm_type {
         SvmType::OneClass | SvmType::EpsilonSvr | SvmType::NuSvr => {
             train_regression_or_one_class(problem, &param)
         }
         SvmType::CSvc | SvmType::NuSvc => train_classification(problem, &param),
-    }
+    };
+    // Both paths check row lengths, counts and class slices before using them.
+    #[expect(clippy::expect_used, reason = "private training paths check row lengths, counts and class slices")]
+    model.expect("training requires consistent row lengths and offsets, representable counts, and at most 2^53 solver rows. Pass one label per instance and at least one row for classification")
 }
 
-fn train_regression_or_one_class(problem: &SvmProblem, param: &SvmParameter) -> SvmModel {
-    let f = svm_train_one(&problem.instances, &problem.labels, param, 0.0, 0.0);
+fn train_regression_or_one_class(problem: &SvmProblem, param: &SvmParameter) -> Option<SvmModel> {
+    let f = svm_train_one(&problem.instances, &problem.labels, param, 0.0, 0.0)?;
 
     // Extract support vectors
     let mut sv = Vec::new();
     let mut sv_coef = Vec::new();
     let mut sv_indices = Vec::new();
 
-    for i in 0..problem.instances.len() {
-        if f.alpha[i].abs() > 0.0 {
-            sv.push(problem.instances[i].clone());
-            sv_coef.push(f.alpha[i]);
-            sv_indices.push(i + 1); // 1-based
+    if f.alpha.len() != problem.instances.len() {
+        return None;
+    }
+    for (i, (instance, &a)) in problem.instances.iter().zip(&f.alpha).enumerate() {
+        if a.abs() > 0.0 {
+            sv.push(instance.clone());
+            sv_coef.push(a);
+            sv_indices.push(i.checked_add(1)?);
         }
     }
 
@@ -437,13 +482,16 @@ fn train_regression_or_one_class(problem: &SvmProblem, param: &SvmParameter) -> 
         }
     }
 
-    model
+    Some(model)
 }
 
 #[expect(clippy::too_many_lines, reason = "Keep the source loop in one place")]
-fn train_classification(problem: &SvmProblem, param: &SvmParameter) -> SvmModel {
+fn train_classification(problem: &SvmProblem, param: &SvmParameter) -> Option<SvmModel> {
     let l = problem.instances.len();
-    let group = group_classes(&problem.labels);
+    if problem.labels.len() != l || l == 0 || l as u128 > (1u128 << 53) {
+        return None;
+    }
+    let group = group_classes(&problem.labels)?;
     let nr_class = group.label.len();
 
     if nr_class == 1 {
@@ -451,13 +499,17 @@ fn train_classification(problem: &SvmProblem, param: &SvmParameter) -> SvmModel 
     }
 
     // Reorder instances by class
-    let x: Vec<&Vec<SvmNode>> = (0..l).map(|i| &problem.instances[group.perm[i]]).collect();
+    let x: Vec<&Vec<SvmNode>> = group
+        .perm
+        .iter()
+        .map(|&i| problem.instances.get(i))
+        .collect::<Option<_>>()?;
 
     // Calculate weighted C
     let mut weighted_c = vec![param.c; nr_class];
     for &(wlabel, wval) in &param.weight {
         if let Some(j) = group.label.iter().position(|&lab| lab == wlabel) {
-            weighted_c[j] *= wval;
+            *weighted_c.get_mut(j)? *= wval;
         } else {
             crate::info(&format!(
                 "WARNING: class label {wlabel} specified in weight is not found\n"
@@ -467,7 +519,8 @@ fn train_classification(problem: &SvmProblem, param: &SvmParameter) -> SvmModel 
 
     // Train k*(k-1)/2 binary classifiers
     let mut nonzero = vec![false; l];
-    let n_pairs = nr_class * (nr_class - 1) / 2;
+    let coef_rows = nr_class.checked_sub(1)?;
+    let n_pairs = nr_class.checked_mul(coef_rows)? / 2;
     let mut decisions = Vec::with_capacity(n_pairs);
 
     // Probability arrays (filled only when param.probability is set)
@@ -479,21 +532,22 @@ fn train_classification(problem: &SvmProblem, param: &SvmParameter) -> SvmModel 
     }
 
     for i in 0..nr_class {
-        for j in (i + 1)..nr_class {
-            let si = group.start[i];
-            let sj = group.start[j];
-            let ci = group.count[i];
-            let cj = group.count[j];
+        for j in i.checked_add(1)?..nr_class {
+            let si = *group.start.get(i)?;
+            let sj = *group.start.get(j)?;
+            let ci = *group.count.get(i)?;
+            let cj = *group.count.get(j)?;
 
             // Build sub-problem
-            let mut sub_x = Vec::with_capacity(ci + cj);
-            let mut sub_labels = Vec::with_capacity(ci + cj);
-            for k in 0..ci {
-                sub_x.push(x[si + k].clone());
+            let sub_len = ci.checked_add(cj)?;
+            let mut sub_x = Vec::with_capacity(sub_len);
+            let mut sub_labels = Vec::with_capacity(sub_len);
+            for instance in x.get(si..si.checked_add(ci)?)? {
+                sub_x.push((*instance).clone());
                 sub_labels.push(1.0);
             }
-            for k in 0..cj {
-                sub_x.push(x[sj + k].clone());
+            for instance in x.get(sj..sj.checked_add(cj)?)? {
+                sub_x.push((*instance).clone());
                 sub_labels.push(-1.0);
             }
 
@@ -506,18 +560,28 @@ fn train_classification(problem: &SvmProblem, param: &SvmParameter) -> SvmModel 
                 let (pa, pb) = crate::probability::svm_binary_svc_probability(
                     &sub_prob,
                     param,
-                    weighted_c[i],
-                    weighted_c[j],
+                    *weighted_c.get(i)?,
+                    *weighted_c.get(j)?,
                 );
                 prob_a.push(pa);
                 prob_b.push(pb);
             }
 
-            let f = svm_train_one(&sub_x, &sub_labels, param, weighted_c[i], weighted_c[j]);
+            let f = svm_train_one(
+                &sub_x,
+                &sub_labels,
+                param,
+                *weighted_c.get(i)?,
+                *weighted_c.get(j)?,
+            )?;
 
             // Mark nonzero alphas
-            mark_nonzero_indices(&mut nonzero, si, &f.alpha[..ci]);
-            mark_nonzero_indices(&mut nonzero, sj, &f.alpha[ci..(ci + cj)]);
+            let (alpha_i, alpha_j) = f.alpha.split_at_checked(ci)?;
+            if alpha_j.len() != cj {
+                return None;
+            }
+            mark_nonzero_indices(&mut nonzero, si, alpha_i)?;
+            mark_nonzero_indices(&mut nonzero, sj, alpha_j)?;
 
             decisions.push(f);
         }
@@ -528,11 +592,11 @@ fn train_classification(problem: &SvmProblem, param: &SvmParameter) -> SvmModel 
     let rho: Vec<f64> = decisions.iter().map(|d| d.rho).collect();
 
     // Count SVs per class
-    let mut total_sv = 0;
+    let mut total_sv = 0usize;
     let mut n_sv_per_class = vec![0usize; nr_class];
     for (i, n_sv) in n_sv_per_class.iter_mut().enumerate().take(nr_class) {
-        let n = count_nonzero(&nonzero, group.start[i], group.count[i]);
-        total_sv += n;
+        let n = count_nonzero(&nonzero, *group.start.get(i)?, *group.count.get(i)?)?;
+        total_sv = total_sv.checked_add(n)?;
         *n_sv = n;
     }
 
@@ -541,55 +605,57 @@ fn train_classification(problem: &SvmProblem, param: &SvmParameter) -> SvmModel 
     // Collect SVs and indices
     let mut model_sv = Vec::with_capacity(total_sv);
     let mut model_sv_indices = Vec::with_capacity(total_sv);
-    for i in 0..l {
-        if nonzero[i] {
-            model_sv.push(x[i].clone());
-            model_sv_indices.push(group.perm[i] + 1); // 1-based original index
+    for ((&is_nonzero, instance), &original) in nonzero.iter().zip(&x).zip(&group.perm) {
+        if is_nonzero {
+            model_sv.push((*instance).clone());
+            model_sv_indices.push(original.checked_add(1)?);
         }
     }
 
     // Build nz_start (cumulative start of nonzero SVs per class)
     let mut nz_start = vec![0usize; nr_class];
-    for i in 1..nr_class {
-        nz_start[i] = nz_start[i - 1] + n_sv_per_class[i - 1];
+    let mut cumulative = 0usize;
+    for (slot, &n) in nz_start.iter_mut().zip(&n_sv_per_class) {
+        *slot = cumulative;
+        cumulative = cumulative.checked_add(n)?;
     }
 
     // Build sv_coef matrix: (nr_class - 1) rows × total_sv columns
-    let mut sv_coef = vec![vec![0.0; total_sv]; nr_class - 1];
+    let mut sv_coef = vec![vec![0.0; total_sv]; coef_rows];
 
-    {
-        let mut p = 0;
-        for i in 0..nr_class {
-            for j in (i + 1)..nr_class {
-                let si = group.start[i];
-                let sj = group.start[j];
-                let ci = group.count[i];
-                let cj = group.count[j];
-
-                // Coefficients for class i's SVs go in sv_coef[j-1]
-                let mut q = nz_start[i];
-                for k in 0..ci {
-                    if nonzero[si + k] {
-                        sv_coef[j - 1][q] = decisions[p].alpha[k];
-                        q += 1;
+    let mut decision_iter = decisions.iter();
+    for i in 0..nr_class {
+        for j in i.checked_add(1)?..nr_class {
+            let si = *group.start.get(i)?;
+            let sj = *group.start.get(j)?;
+            let ci = *group.count.get(i)?;
+            let cj = *group.count.get(j)?;
+            let decision = decision_iter.next()?;
+            let (alpha_i, alpha_j) = decision.alpha.split_at_checked(ci)?;
+            if alpha_j.len() != cj {
+                return None;
+            }
+            for (class, start, count, alphas, row_index) in [
+                (i, si, ci, alpha_i, j.checked_sub(1)?),
+                (j, sj, cj, alpha_j, i),
+            ] {
+                let flags = nonzero.get(start..start.checked_add(count)?)?;
+                let offset = *nz_start.get(class)?;
+                let n = *n_sv_per_class.get(class)?;
+                let mut output = sv_coef
+                    .get_mut(row_index)?
+                    .get_mut(offset..offset.checked_add(n)?)?
+                    .iter_mut();
+                for (&flag, &alpha) in flags.iter().zip(alphas) {
+                    if flag {
+                        *output.next()? = alpha;
                     }
                 }
-
-                // Coefficients for class j's SVs go in sv_coef[i]
-                q = nz_start[j];
-                for k in 0..cj {
-                    if nonzero[sj + k] {
-                        sv_coef[i][q] = decisions[p].alpha[ci + k];
-                        q += 1;
-                    }
-                }
-
-                p += 1;
             }
         }
     }
 
-    SvmModel {
+    Some(SvmModel {
         param: param.clone(),
         nr_class,
         sv: model_sv,
@@ -601,7 +667,7 @@ fn train_classification(problem: &SvmProblem, param: &SvmParameter) -> SvmModel 
         sv_indices: model_sv_indices,
         label: labels,
         n_sv: n_sv_per_class,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -611,6 +677,73 @@ mod tests {
     use crate::predict::predict;
     use crate::types::KernelType;
     use std::path::PathBuf;
+
+    #[test]
+    fn solve_c_svc_rejects_mismatched_rows() {
+        assert!(solve_c_svc(&[], &[1.0], &SvmParameter::default(), 1.0, 1.0).is_none());
+    }
+
+    #[test]
+    fn solve_nu_svc_rejects_mismatched_rows() {
+        assert!(solve_nu_svc(&[], &[1.0], &SvmParameter::default()).is_none());
+    }
+
+    #[test]
+    fn solve_epsilon_svr_rejects_mismatched_rows() {
+        assert!(solve_epsilon_svr(&[], &[1.0], &SvmParameter::default()).is_none());
+    }
+
+    #[test]
+    fn solve_nu_svr_rejects_mismatched_rows() {
+        assert!(solve_nu_svr(&[], &[1.0], &SvmParameter::default()).is_none());
+    }
+
+    #[test]
+    fn svm_train_one_rejects_mismatched_rows() {
+        assert!(svm_train_one(&[], &[1.0], &SvmParameter::default(), 1.0, 1.0).is_none());
+    }
+
+    #[test]
+    fn train_regression_or_one_class_rejects_mismatched_rows() {
+        let problem = SvmProblem {
+            labels: vec![1.0],
+            instances: Vec::new(),
+        };
+        assert!(train_regression_or_one_class(&problem, &SvmParameter::default()).is_none());
+    }
+
+    #[test]
+    fn train_classification_rejects_mismatched_rows() {
+        // Two instances and one label: the empty-input check does not apply,
+        // so only the length mismatch can reject.
+        let problem = SvmProblem {
+            labels: vec![1.0],
+            instances: vec![Vec::new(), Vec::new()],
+        };
+        assert!(train_classification(&problem, &SvmParameter::default()).is_none());
+    }
+
+    #[test]
+    fn solver_rows_rejects_overflow() {
+        assert!(solver_rows(usize::MAX, 2).is_none());
+        if let Ok(limit) = usize::try_from(1u128 << 53) {
+            assert_eq!(solver_rows(limit, 1), Some(limit));
+            assert!(solver_rows(limit.checked_add(1).unwrap(), 1).is_none());
+            assert!(solver_rows(limit, 2).is_none());
+        }
+    }
+
+    #[test]
+    fn mark_nonzero_indices_rejects_invalid_window() {
+        assert!(mark_nonzero_indices(&mut [false], 1, &[1.0]).is_none());
+        assert!(mark_nonzero_indices(&mut [false], usize::MAX, &[1.0]).is_none());
+    }
+
+    #[test]
+    fn count_nonzero_rejects_invalid_window() {
+        assert!(count_nonzero(&[false], 1, 1).is_none());
+        assert!(count_nonzero(&[false], usize::MAX, 1).is_none());
+    }
 
     fn data_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -665,19 +798,20 @@ mod tests {
         );
 
         // Same rho (within tolerance)
+        // Tolerance 1e-4 is a loose bound. The measured difference to the C model is 1 ULP (5.6e-17) here.
         assert!(
-            (model.rho[0] - ref_model.rho[0]).abs() < 1e-4,
+            (*model.rho.first().unwrap() - *ref_model.rho.first().unwrap()).abs() < 1e-4,
             "rho mismatch: Rust={}, C={}",
-            model.rho[0],
-            ref_model.rho[0]
+            *model.rho.first().unwrap(),
+            *ref_model.rho.first().unwrap()
         );
 
         // Predictions should match on training data
         let mut correct = 0;
         for (i, instance) in problem.instances.iter().enumerate() {
             let pred = predict(&model, instance);
-            if pred == problem.labels[i] {
-                correct += 1;
+            if pred == *problem.labels.get(i).unwrap() {
+                correct = i32::checked_add(correct, 1).unwrap();
             }
         }
         let accuracy = f64::from(correct) / problem.labels.len() as f64;
@@ -693,7 +827,7 @@ mod tests {
             let rust_pred = predict(&model, instance);
             let c_pred = predict(&ref_model, instance);
             if rust_pred != c_pred {
-                mismatches += 1;
+                mismatches = i32::checked_add(mismatches, 1).unwrap();
             }
         }
         assert!(
@@ -740,8 +874,8 @@ mod tests {
         let mut correct = 0;
         for (i, instance) in problem.instances.iter().enumerate() {
             let pred = predict(&model, instance);
-            if pred == problem.labels[i] {
-                correct += 1;
+            if pred == *problem.labels.get(i).unwrap() {
+                correct = i32::checked_add(correct, 1).unwrap();
             }
         }
         let accuracy = f64::from(correct) / problem.labels.len() as f64;
@@ -782,8 +916,8 @@ mod tests {
         let mut correct = 0;
         for (i, instance) in problem.instances.iter().enumerate() {
             let pred = predict(&model, instance);
-            if pred == problem.labels[i] {
-                correct += 1;
+            if pred == *problem.labels.get(i).unwrap() {
+                correct = i32::checked_add(correct, 1).unwrap();
             }
         }
         let accuracy = f64::from(correct) / problem.labels.len() as f64;
@@ -823,7 +957,7 @@ mod tests {
         for instance in &problem.instances {
             let pred = predict(&model, instance);
             if pred > 0.0 {
-                inliers += 1;
+                inliers = i32::checked_add(inliers, 1).unwrap();
             }
         }
         let inlier_rate = f64::from(inliers) / problem.instances.len() as f64;
@@ -863,7 +997,7 @@ mod tests {
         let mut mse = 0.0;
         for (i, instance) in problem.instances.iter().enumerate() {
             let pred = predict(&model, instance);
-            let err = pred - problem.labels[i];
+            let err = pred - *problem.labels.get(i).unwrap();
             mse += err * err;
         }
         mse /= problem.instances.len() as f64;
@@ -903,8 +1037,8 @@ mod tests {
         let mut correct = 0;
         for (i, instance) in problem.instances.iter().enumerate() {
             let pred = predict(&model, instance);
-            if pred == problem.labels[i] {
-                correct += 1;
+            if pred == *problem.labels.get(i).unwrap() {
+                correct = i32::checked_add(correct, 1).unwrap();
             }
         }
         let accuracy = f64::from(correct) / problem.labels.len() as f64;
@@ -935,8 +1069,8 @@ mod tests {
         assert_eq!(model.nr_class, 2);
         assert_eq!(model.prob_a.len(), 1, "binary should have 1 probA");
         assert_eq!(model.prob_b.len(), 1, "binary should have 1 probB");
-        assert!(model.prob_a[0].is_finite());
-        assert!(model.prob_b[0].is_finite());
+        assert!(model.prob_a.first().unwrap().is_finite());
+        assert!(model.prob_b.first().unwrap().is_finite());
     }
 
     #[test]
@@ -966,7 +1100,7 @@ mod tests {
         let mut mse = 0.0;
         for (i, instance) in problem.instances.iter().enumerate() {
             let pred = predict(&model, instance);
-            let err = pred - problem.labels[i];
+            let err = pred - *problem.labels.get(i).unwrap();
             mse += err * err;
         }
         mse /= problem.instances.len() as f64;
