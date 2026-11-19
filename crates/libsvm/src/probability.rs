@@ -585,7 +585,7 @@ pub fn svm_svr_probability(prob: &SvmProblem, param: &SvmParameter) -> f64 {
     let scale = try_svr_probability(prob, param);
     #[expect(
         clippy::expect_used,
-        reason = "try_svr_probability checks row counts and residual lengths"
+        reason = "try_svr_probability checks row counts; svm_cross_validation returns one prediction per row"
     )]
     scale.expect("SVR probability requires consistent row lengths and at most 2^53 rows")
 }

@@ -132,7 +132,7 @@ impl GlibcRandState {
     fn seeded(seed: u32) -> Option<Self> {
         let mut state = [0u32; GLIBC_RAND_DEGREE];
         state[0] = seed;
-        // A u32 times 16807 is below 2^46, so the u64 product cannot overflow.
+        // A u32 times 16807 is below 2^47, so the u64 product cannot overflow.
         let mut previous = seed;
         for slot in state.iter_mut().skip(1) {
             *slot = ((16_807u64 * u64::from(previous)) % 2_147_483_647) as u32;
