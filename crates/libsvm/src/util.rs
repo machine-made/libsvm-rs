@@ -324,7 +324,7 @@ mod tests {
                 .collect(),
             labels,
         };
-        let mut expected_targets = vec![0.0; 9];
+        let mut expected_targets = [0.0; 9];
         for bounds in fold_starts.windows(2) {
             let (begin, end) = (bounds[0], bounds[1]);
             let training: Vec<_> = expected[..begin]
@@ -344,9 +344,15 @@ mod tests {
                 expected_targets[i] = crate::predict::predict(&model, &problem.instances[i]);
             }
         }
+        // The comparison is exact (zero tolerance). Each target is a predicted class
+        // label, an i32 converted to f64, and both sides run the same training.
+        let actual_targets = crate::cross_validation::svm_cross_validation(&problem, &param, 3);
         assert_eq!(
-            crate::cross_validation::svm_cross_validation(&problem, &param, 3),
-            expected_targets
+            actual_targets
+                .into_iter()
+                .map(f64::to_bits)
+                .collect::<Vec<_>>(),
+            expected_targets.map(f64::to_bits)
         );
     }
 

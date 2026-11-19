@@ -303,9 +303,19 @@ mod tests {
         let mut decisions = [0.0; 3];
         let label = predict_values(&model, &[], &mut decisions);
         // The pairs (0, 1), (0, 2), (1, 2) vote for classes 0, 2, 1.
-        assert_eq!(decisions, [1.0, -1.0, 1.0]);
-        assert_eq!(label, 7.0, "one vote per class must keep the first label");
-        assert_eq!(predict(&model, &[]), 7.0);
+        // The comparisons are exact (zero tolerance). The model has no support vectors,
+        // so each decision value is 0.0 - rho with rho = +-1.0, and a label is an i32
+        // converted to f64. Neither step rounds.
+        assert_eq!(
+            decisions.map(f64::to_bits),
+            [1.0_f64, -1.0, 1.0].map(f64::to_bits)
+        );
+        assert_eq!(
+            label.to_bits(),
+            7.0_f64.to_bits(),
+            "one vote per class must keep the first label"
+        );
+        assert_eq!(predict(&model, &[]).to_bits(), 7.0_f64.to_bits());
     }
 
     #[test]
