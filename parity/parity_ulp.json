@@ -5,11 +5,11 @@
   "inputs": {
     "reference": {
       "path": ".tmp/differential_suite/parity_c.json",
-      "sha256": "d44800bda4467d35215fc94bb50734f4e3997ef55b5a396e157e69f5f20b8259"
+      "sha256": "8920ce0f85ca74cb12d30c9836ea0039ee610e0cb98c579c5bc15e725dbbdada"
     },
     "candidate": {
       "path": ".tmp/differential_suite/parity_r.json",
-      "sha256": "d44800bda4467d35215fc94bb50734f4e3997ef55b5a396e157e69f5f20b8259"
+      "sha256": "8920ce0f85ca74cb12d30c9836ea0039ee610e0cb98c579c5bc15e725dbbdada"
     },
     "config": {
       "path": "parity/tolerances.json",
@@ -17,9 +17,9 @@
     }
   },
   "summary": {
-    "fields": 4740,
+    "fields": 4766,
     "fields_failed": 0,
-    "values": 1016989,
+    "values": 1017174,
     "failures": 0,
     "max_rel_err": 0.0,
     "max_ulp": 0
@@ -5765,6 +5765,30 @@
       "name": "gamma.iris_scale_s2_t3_tuned",
       "pass": true,
       "count": 1,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "gamma.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 0,
       "failures": 0,
       "tolerance": {
         "rtol": 0.0,
@@ -11546,6 +11570,30 @@
       "first_failures": []
     },
     {
+      "name": "coef0.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 0,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "degree.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 0,
@@ -17283,6 +17331,30 @@
     },
     {
       "name": "degree.iris_scale_s2_t3_tuned",
+      "pass": true,
+      "count": 0,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "degree.vote_tie_scale_s0_t0_default",
       "pass": true,
       "count": 0,
       "failures": 0,
@@ -23066,6 +23138,30 @@
       "first_failures": []
     },
     {
+      "name": "rho.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 3,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "nr_class.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 1,
@@ -28803,6 +28899,30 @@
     },
     {
       "name": "nr_class.iris_scale_s2_t3_tuned",
+      "pass": true,
+      "count": 1,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "nr_class.vote_tie_scale_s0_t0_default",
       "pass": true,
       "count": 1,
       "failures": 0,
@@ -34586,6 +34706,30 @@
       "first_failures": []
     },
     {
+      "name": "total_sv.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 1,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "sv_coef.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 48,
@@ -40325,6 +40469,30 @@
       "name": "sv_coef.iris_scale_s2_t3_tuned",
       "pass": true,
       "count": 62,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "sv_coef.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 18,
       "failures": 0,
       "tolerance": {
         "rtol": 0.0,
@@ -46106,6 +46274,30 @@
       "first_failures": []
     },
     {
+      "name": "sv.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 36,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "predict.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 140,
@@ -51866,6 +52058,54 @@
       "first_failures": []
     },
     {
+      "name": "predict.single_member_scale_s0_t0_default_cv3",
+      "pass": true,
+      "count": 1,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "predict.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 9,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "predict_probability.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 422,
@@ -55445,6 +55685,30 @@
       "name": "predict_probability.iris_scale_s1_t3_tuned",
       "pass": true,
       "count": 603,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "predict_probability.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 39,
       "failures": 0,
       "tolerance": {
         "rtol": 0.0,
@@ -61226,6 +61490,30 @@
       "first_failures": []
     },
     {
+      "name": "nr_sv.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 3,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "label.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 2,
@@ -66986,6 +67274,30 @@
       "first_failures": []
     },
     {
+      "name": "label.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 3,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "prob_gamma.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 0,
@@ -70565,6 +70877,30 @@
       "name": "prob_gamma.iris_scale_s1_t3_tuned",
       "pass": true,
       "count": 1,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "prob_gamma.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 0,
       "failures": 0,
       "tolerance": {
         "rtol": 0.0,
@@ -74186,6 +74522,30 @@
       "first_failures": []
     },
     {
+      "name": "prob_coef0.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 0,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "prob_degree.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 0,
@@ -77763,6 +78123,30 @@
     },
     {
       "name": "prob_degree.iris_scale_s1_t3_tuned",
+      "pass": true,
+      "count": 0,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "prob_degree.vote_tie_scale_s0_t0_default",
       "pass": true,
       "count": 0,
       "failures": 0,
@@ -81386,6 +81770,30 @@
       "first_failures": []
     },
     {
+      "name": "prob_rho.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 3,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "prob_nr_class.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 1,
@@ -84963,6 +85371,30 @@
     },
     {
       "name": "prob_nr_class.iris_scale_s1_t3_tuned",
+      "pass": true,
+      "count": 1,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "prob_nr_class.vote_tie_scale_s0_t0_default",
       "pass": true,
       "count": 1,
       "failures": 0,
@@ -88586,6 +89018,30 @@
       "first_failures": []
     },
     {
+      "name": "prob_total_sv.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 1,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "probA.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 1,
@@ -92163,6 +92619,30 @@
     },
     {
       "name": "probA.iris_scale_s1_t3_tuned",
+      "pass": true,
+      "count": 3,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "probA.vote_tie_scale_s0_t0_default",
       "pass": true,
       "count": 3,
       "failures": 0,
@@ -95786,6 +96266,30 @@
       "first_failures": []
     },
     {
+      "name": "probB.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 3,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "prob_density_marks.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 0,
@@ -99363,6 +99867,30 @@
     },
     {
       "name": "prob_density_marks.iris_scale_s1_t3_tuned",
+      "pass": true,
+      "count": 0,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "prob_density_marks.vote_tie_scale_s0_t0_default",
       "pass": true,
       "count": 0,
       "failures": 0,
@@ -102986,6 +103514,30 @@
       "first_failures": []
     },
     {
+      "name": "prob_sv_coef.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 18,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "prob_sv.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 96,
@@ -106565,6 +107117,30 @@
       "name": "prob_sv.iris_scale_s1_t3_tuned",
       "pass": true,
       "count": 716,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "prob_sv.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 36,
       "failures": 0,
       "tolerance": {
         "rtol": 0.0,
@@ -110186,6 +110762,30 @@
       "first_failures": []
     },
     {
+      "name": "prob_nr_sv.vote_tie_scale_s0_t0_default",
+      "pass": true,
+      "count": 3,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
       "name": "prob_label.gen_binary_imbalanced_scale_precomputed_s0_t4_default",
       "pass": true,
       "count": 2,
@@ -113763,6 +114363,30 @@
     },
     {
       "name": "prob_label.iris_scale_s1_t3_tuned",
+      "pass": true,
+      "count": 3,
+      "failures": 0,
+      "tolerance": {
+        "rtol": 0.0,
+        "atol": 0.0,
+        "precision": "f64",
+        "signed_zero": "strict",
+        "reason": "Measurement run: report the exact distance to the C original"
+      },
+      "max_abs_err": 0.0,
+      "max_rel_err": 0.0,
+      "max_ulp": 0,
+      "worst_abs_index": null,
+      "worst_rel_index": null,
+      "nonfinite_mismatch": 0,
+      "sign_mismatch": 0,
+      "subnormal_in_ref": 0,
+      "subnormal_flushed": 0,
+      "int_mismatch": 0,
+      "first_failures": []
+    },
+    {
+      "name": "prob_label.vote_tie_scale_s0_t0_default",
       "pass": true,
       "count": 3,
       "failures": 0,

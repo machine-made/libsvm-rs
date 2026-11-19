@@ -212,9 +212,6 @@ pub(crate) fn c_rand() -> usize {
 pub(crate) fn shuffle_range(index: &mut [usize], start: usize, len: usize) -> Option<()> {
     let end = start.checked_add(len)?;
     let slice = index.get_mut(start..end)?;
-    if len <= 1 {
-        return Some(());
-    }
     for i in 0..len {
         let remaining = len.checked_sub(i)?;
         let j = i.checked_add(c_rand().checked_rem(remaining)?)?;
@@ -248,6 +245,116 @@ pub fn parse_feature_index(idx_str: &str, max_feature_index: i32) -> Result<i32,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "The small fixed fixture bounds each index"
+    )]
+    fn cross_validation_single_member_class_draws_one_random_number() {
+        // Run alone so other tests cannot consume the process-wide random stream.
+        const CHILD: &str = "LIBSVM_SINGLE_MEMBER_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "util::tests::cross_validation_single_member_class_draws_one_random_number",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+
+        let labels = vec![7.0, 2.0, 2.0, 2.0, 2.0, -3.0, -3.0, -3.0, -3.0];
+        let starts = [0, 1, 5];
+        let counts = [1, 4, 4];
+        let mut rng = GlibcRandState::seeded(1).unwrap();
+        let mut index: Vec<_> = (0..labels.len()).collect();
+        // Independent copy of the C shuffle, including rand() % 1.
+        for (&start, &len) in starts.iter().zip(&counts) {
+            for i in 0..len {
+                let j = i + rng.next().unwrap() % (len - i);
+                index.swap(start + i, start + j);
+            }
+        }
+        let mut expected = Vec::new();
+        let mut fold_starts = vec![0];
+        for fold in 0..3 {
+            for (&start, &len) in starts.iter().zip(&counts) {
+                expected.extend_from_slice(
+                    &index[start + fold * len / 3..start + (fold + 1) * len / 3],
+                );
+            }
+            fold_starts.push(expected.len());
+        }
+        let param = crate::SvmParameter {
+            kernel_type: crate::KernelType::Linear,
+            ..Default::default()
+        };
+        let (actual, actual_starts) =
+            crate::cross_validation::cross_validation_folds(&labels, &param, 3).unwrap();
+        assert_eq!(actual, expected, "stratified permutation differs from C");
+        assert_eq!(actual_starts, fold_starts);
+        shuffle_range(&mut [], 0, 0).unwrap();
+        assert_eq!(
+            c_rand(),
+            rng.next().unwrap(),
+            "random stream differs after the shuffle"
+        );
+
+        // Exercise the public call from the same seed and independent fold plan.
+        *glibc_rand_state().unwrap().lock().unwrap() = GlibcRandState::seeded(1).unwrap();
+        let problem = crate::SvmProblem {
+            instances: (0..9)
+                .map(|i| {
+                    vec![crate::SvmNode {
+                        index: 1,
+                        value: f64::from(i),
+                    }]
+                })
+                .collect(),
+            labels,
+        };
+        let mut expected_targets = [0.0; 9];
+        for bounds in fold_starts.windows(2) {
+            let (begin, end) = (bounds[0], bounds[1]);
+            let training: Vec<_> = expected[..begin]
+                .iter()
+                .chain(&expected[end..])
+                .copied()
+                .collect();
+            let subproblem = crate::SvmProblem {
+                labels: training.iter().map(|&i| problem.labels[i]).collect(),
+                instances: training
+                    .iter()
+                    .map(|&i| problem.instances[i].clone())
+                    .collect(),
+            };
+            let model = crate::train::svm_train(&subproblem, &param);
+            for &i in &expected[begin..end] {
+                expected_targets[i] = crate::predict::predict(&model, &problem.instances[i]);
+            }
+        }
+        // The comparison is exact (zero tolerance). Each target is a predicted class
+        // label, an i32 converted to f64, and both sides run the same training.
+        let actual_targets = crate::cross_validation::svm_cross_validation(&problem, &param, 3);
+        assert_eq!(
+            actual_targets
+                .into_iter()
+                .map(f64::to_bits)
+                .collect::<Vec<_>>(),
+            expected_targets.map(f64::to_bits)
+        );
+    }
 
     #[test]
     fn shuffle_range_rejects_inconsistent_window() {
