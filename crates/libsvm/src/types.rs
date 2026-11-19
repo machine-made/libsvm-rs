@@ -11,16 +11,8 @@
     test,
     expect(
         clippy::unwrap_used,
-        reason = "Checked access is not yet done in this module; remove this line when it is"
+        reason = "Tests unwrap fixture loading and checked assertions"
     )
-)]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
-)]
-#![expect(
-    clippy::arithmetic_side_effects,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
 )]
 
 /// Type of SVM formulation.
@@ -268,6 +260,10 @@ pub fn check_parameter(
         )));
     }
 
+    if problem.labels.len() as u128 > (1u128 << 53) {
+        return Err(SvmError::InvalidParameter("row count exceeds 2^53".into()));
+    }
+
     if problem.labels.is_empty() {
         return Err(SvmError::InvalidParameter(
             "problem has no instances".into(),
@@ -275,17 +271,15 @@ pub fn check_parameter(
     }
 
     if param.kernel_type == KernelType::Precomputed {
-        for (row, instance) in problem.instances.iter().enumerate() {
+        for (row, instance) in (1usize..).zip(&problem.instances) {
             let first = instance.first().ok_or_else(|| {
                 SvmError::InvalidParameter(format!(
-                    "precomputed kernel row {} is missing 0:sample_serial_number",
-                    row + 1
+                    "precomputed kernel row {row} is missing 0:sample_serial_number"
                 ))
             })?;
             check_sample_serial(first, problem.instances.len()).map_err(|why| {
                 SvmError::InvalidParameter(format!(
-                    "precomputed kernel row {} must start with 0:sample_serial_number {why}",
-                    row + 1
+                    "precomputed kernel row {row} must start with 0:sample_serial_number {why}"
                 ))
             })?;
         }
@@ -302,15 +296,24 @@ pub fn check_parameter(
         for &y in &problem.labels {
             let label = y as i32;
             if let Some(entry) = class_counts.iter_mut().find(|(l, _)| *l == label) {
-                entry.1 += 1;
+                entry.1 = entry
+                    .1
+                    .checked_add(1)
+                    .ok_or_else(|| SvmError::InvalidParameter("class count overflow".into()))?;
             } else {
                 class_counts.push((label, 1));
             }
         }
 
         for (i, &(_, n1)) in class_counts.iter().enumerate() {
-            for &(_, n2) in &class_counts[i + 1..] {
-                if param.nu * (n1 + n2) as f64 / 2.0 > n1.min(n2) as f64 {
+            for &(_, n2) in class_counts.iter().skip(i).skip(1) {
+                if param.nu
+                    * n1.checked_add(n2).ok_or_else(|| {
+                        SvmError::InvalidParameter("class count sum overflow".into())
+                    })? as f64
+                    / 2.0
+                    > n1.min(n2) as f64
+                {
                     return Err(SvmError::InvalidParameter(
                         "specified nu is infeasible".into(),
                     ));

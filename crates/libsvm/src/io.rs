@@ -20,16 +20,8 @@
     test,
     expect(
         clippy::unwrap_used,
-        reason = "Checked access is not yet done in this module; remove this line when it is"
+        reason = "Tests unwrap fixture loading and checked assertions"
     )
-)]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
-)]
-#![expect(
-    clippy::arithmetic_side_effects,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
 )]
 
 use std::io::{BufRead, Write};
@@ -100,7 +92,7 @@ impl fmt::Display for Gfmt {
 
         if exp < -4 || exp >= p as i32 {
             // Use scientific notation
-            let s = format!("{:.prec$e}", v, prec = p.saturating_sub(1));
+            let s = format!("{:.prec$e}", v, prec = p.checked_sub(1).ok_or(fmt::Error)?);
             // Rust uses 'e', C uses 'e'. Strip trailing zeros in mantissa.
             // C zero-pads exponent to at least 2 digits (e-05 not e-5).
             if let Some((mantissa, exponent)) = s.split_once('e') {
@@ -108,7 +100,7 @@ impl fmt::Display for Gfmt {
                 // Parse exponent, reformat with at least 2 digits
                 let exp_val: i32 = exponent.parse().unwrap_or(0);
                 let exp_str = if exp_val < 0 {
-                    format!("-{:02}", -exp_val)
+                    format!("-{:02}", exp_val.unsigned_abs())
                 } else {
                     format!("+{exp_val:02}")
                 };
@@ -119,9 +111,11 @@ impl fmt::Display for Gfmt {
         } else {
             // Use fixed notation. Number of decimal places = precision - (exp + 1)
             let decimal_places = if exp >= 0 {
-                p.saturating_sub((exp + 1) as usize)
+                p.checked_sub(exp.checked_add(1).ok_or(fmt::Error)? as usize)
+                    .ok_or(fmt::Error)?
             } else {
-                p + (-1 - exp) as usize
+                p.checked_add((-1i32).checked_sub(exp).ok_or(fmt::Error)? as usize)
+                    .ok_or(fmt::Error)?
             };
             let s = format!("{v:.decimal_places$}");
             let s = s.trim_end_matches('0').trim_end_matches('.');
@@ -154,15 +148,24 @@ pub fn format_17g(v: f64) -> String {
 
 // ─── String tables matching original LIBSVM ──────────────────────────
 
-const SVM_TYPE_TABLE: &[&str] = &["c_svc", "nu_svc", "one_class", "epsilon_svr", "nu_svr"];
-const KERNEL_TYPE_TABLE: &[&str] = &["linear", "polynomial", "rbf", "sigmoid", "precomputed"];
-
 fn svm_type_to_str(t: SvmType) -> &'static str {
-    SVM_TYPE_TABLE[t as usize]
+    match t {
+        SvmType::CSvc => "c_svc",
+        SvmType::NuSvc => "nu_svc",
+        SvmType::OneClass => "one_class",
+        SvmType::EpsilonSvr => "epsilon_svr",
+        SvmType::NuSvr => "nu_svr",
+    }
 }
 
 fn kernel_type_to_str(t: KernelType) -> &'static str {
-    KERNEL_TYPE_TABLE[t as usize]
+    match t {
+        KernelType::Linear => "linear",
+        KernelType::Polynomial => "polynomial",
+        KernelType::Rbf => "rbf",
+        KernelType::Sigmoid => "sigmoid",
+        KernelType::Precomputed => "precomputed",
+    }
 }
 
 fn str_to_svm_type(s: &str) -> Option<SvmType> {
@@ -293,7 +296,9 @@ fn read_line_capped(
     // the full allowed content plus CRLF consumes `max_line_len + 2` bytes
     // total, of which one (the \r) would otherwise push us past the cap
     // before the final `\n` arrives.
-    let per_line_raw_cap: u64 = (max_line_len as u64).saturating_add(1);
+    let per_line_raw_cap = (max_line_len as u128)
+        .checked_add(1)
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "line cap overflow"))?;
 
     let mut buf: Vec<u8> = Vec::new();
     let mut found_newline = false;
@@ -305,13 +310,23 @@ fn read_line_capped(
         }
 
         let take_n = match available.iter().position(|&b| b == b'\n') {
-            Some(pos) => pos + 1, // include the newline
+            Some(pos) => pos.checked_add(1).ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "line length overflow")
+            })?,
             None => available.len(),
         };
-        let ends_with_newline = take_n > 0 && available[take_n - 1] == b'\n';
+        let chunk = available.get(..take_n).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "invalid reader buffer length",
+            )
+        })?;
+        let ends_with_newline = chunk.last() == Some(&b'\n');
 
         // Byte cap.
-        let new_bytes_read = bytes_read.saturating_add(take_n as u64);
+        let new_bytes_read = bytes_read.checked_add(take_n as u64).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "byte count overflow")
+        })?;
         if new_bytes_read > max_bytes {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -321,9 +336,15 @@ fn read_line_capped(
 
         // Per-line cap. Content bytes excludes the trailing `\n` (if any);
         // we allow one byte of slack for a possible `\r` preceding it.
-        let prospective_len = (buf.len() as u64).saturating_add(take_n as u64);
+        let prospective_len = (buf.len() as u128)
+            .checked_add(take_n as u128)
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "line length overflow")
+            })?;
         let content_bytes = if ends_with_newline {
-            prospective_len - 1
+            prospective_len.checked_sub(1).ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "line length underflow")
+            })?
         } else {
             prospective_len
         };
@@ -335,14 +356,14 @@ fn read_line_capped(
         }
 
         // NUL bytes have no legal use in LIBSVM text files.
-        if available[..take_n].contains(&0) {
+        if chunk.contains(&0) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "unexpected NUL byte in text input".to_string(),
             ));
         }
 
-        buf.extend_from_slice(&available[..take_n]);
+        buf.extend_from_slice(chunk);
         reader.consume(take_n);
         *bytes_read = new_bytes_read;
 
@@ -433,8 +454,13 @@ pub fn load_problem_from_reader_with_options(
         options.max_bytes,
         options.max_line_len,
     )? {
-        let line_num = line_idx + 1;
-        line_idx += 1;
+        line_idx = line_idx
+            .checked_add(1)
+            .ok_or_else(|| SvmError::ParseError {
+                line: line_idx,
+                message: "line count overflow".into(),
+            })?;
+        let line_num = line_idx;
         let line = raw.trim();
         if line.is_empty() {
             continue;
@@ -522,7 +548,12 @@ fn check_precomputed_serials(model: &SvmModel) -> Result<(), SvmError> {
     if model.param.kernel_type == KernelType::Precomputed {
         for (i, sv) in model.sv.iter().enumerate() {
             if let Some(node) = sv.first() {
-                checked_serial(i + 1, node.value)?;
+                checked_serial(
+                    i.checked_add(1).ok_or_else(|| {
+                        SvmError::ModelFormatError("support vector count overflow".into())
+                    })?,
+                    node.value,
+                )?;
             }
         }
     }
@@ -657,20 +688,34 @@ pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), S
 
     // SV section
     writeln!(w, "SV")?;
-    let num_sv = model.sv.len();
 
-    for i in 0..num_sv {
+    for (i, nodes) in model.sv.iter().enumerate() {
         // sv_coef columns for this SV: %.17g
         for row in &model.sv_coef {
-            write!(w, "{} ", fmt_17g(row[i]))?;
+            write!(
+                w,
+                "{} ",
+                fmt_17g(*row.get(i).ok_or_else(|| SvmError::ModelFormatError(
+                    "coefficient row is shorter than support vector count".into()
+                ))?)
+            )?;
         }
         // sparse features: %.8g
         if model.param.kernel_type == KernelType::Precomputed {
-            if let Some(node) = model.sv[i].first() {
-                write!(w, "0:{} ", checked_serial(i + 1, node.value)?)?;
+            if let Some(node) = nodes.first() {
+                write!(
+                    w,
+                    "0:{} ",
+                    checked_serial(
+                        i.checked_add(1).ok_or_else(|| SvmError::ModelFormatError(
+                            "support vector count overflow".into()
+                        ))?,
+                        node.value
+                    )?
+                )?;
             }
         } else {
-            for node in &model.sv[i] {
+            for node in nodes {
                 write!(w, "{}:{} ", node.index, fmt_8g(node.value))?;
             }
         }
@@ -806,7 +851,9 @@ pub fn load_model_from_reader_with_options(
         )
         .map_err(|e| SvmError::ModelFormatError(e.to_string()))?
         .ok_or_else(|| SvmError::ModelFormatError("unexpected end of file in header".into()))?;
-        line_num += 1;
+        line_num = line_num
+            .checked_add(1)
+            .ok_or_else(|| SvmError::ModelFormatError("line count overflow".into()))?;
         let line = raw.trim().to_string();
         if line.is_empty() {
             continue;
@@ -947,7 +994,10 @@ pub fn load_model_from_reader_with_options(
     // which would trigger terabyte-scale reservations before any real data is
     // read. Amortized `Vec` growth caps peak memory at the actually-parsed
     // payload.
-    let m = if nr_class > 1 { nr_class - 1 } else { 1 };
+    let m = nr_class
+        .checked_sub(1)
+        .ok_or_else(|| SvmError::ModelFormatError("nr_class must be positive".into()))?
+        .max(1);
     let mut sv_coef: Vec<Vec<f64>> = (0..m).map(|_| Vec::new()).collect();
     let mut sv: Vec<Vec<SvmNode>> = Vec::new();
 
@@ -960,7 +1010,9 @@ pub fn load_model_from_reader_with_options(
         )
         .map_err(|e| SvmError::ModelFormatError(e.to_string()))?
         .ok_or_else(|| SvmError::ModelFormatError("unexpected end of file in SV section".into()))?;
-        line_num += 1;
+        line_num = line_num
+            .checked_add(1)
+            .ok_or_else(|| SvmError::ModelFormatError("line count overflow".into()))?;
         let line = raw.trim();
         if line.is_empty() {
             // Skip blank lines without consuming an SV slot — the header's
@@ -1084,7 +1136,11 @@ pub(crate) fn validate_model(model: &SvmModel) -> Result<(), SvmError> {
         &model.n_sv,
     )?;
 
-    let expected_rows = model.nr_class.saturating_sub(1).max(1);
+    let expected_rows = model
+        .nr_class
+        .checked_sub(1)
+        .ok_or_else(|| SvmError::ModelFormatError("nr_class must be positive".into()))?
+        .max(1);
     if model.sv_coef.len() != expected_rows {
         return Err(SvmError::ModelFormatError(format!(
             "sv_coef has {} rows, expected {}",
@@ -1134,15 +1190,13 @@ pub(crate) fn validate_model(model: &SvmModel) -> Result<(), SvmError> {
         }
     }
 
-    for (row_idx, nodes) in model.sv.iter().enumerate() {
+    for (row_idx, nodes) in (1..).zip(&model.sv) {
         let mut prev_index = 0;
         for (node_idx, node) in nodes.iter().enumerate() {
             if node_idx > 0 && node.index <= prev_index {
                 return Err(SvmError::ModelFormatError(format!(
                     "support vector {} feature indices must be ascending: {} follows {}",
-                    row_idx + 1,
-                    node.index,
-                    prev_index
+                    row_idx, node.index, prev_index
                 )));
             }
             if !node.value.is_finite() {
@@ -1154,7 +1208,7 @@ pub(crate) fn validate_model(model: &SvmModel) -> Result<(), SvmError> {
             prev_index = node.index;
         }
         if model.param.kernel_type == KernelType::Precomputed {
-            validate_precomputed_row(nodes, row_idx + 1, "support vector")?;
+            validate_precomputed_row(nodes, row_idx, "support vector")?;
         }
     }
 
@@ -1235,7 +1289,11 @@ fn validate_model_header(
 
     // Expected rho length depends on svm_type.
     let expected_rho = if is_classification {
-        nr_class * (nr_class - 1) / 2
+        nr_class
+            .checked_sub(1)
+            .and_then(|n| nr_class.checked_mul(n))
+            .ok_or_else(|| SvmError::ModelFormatError("class pair count overflow".into()))?
+            / 2
     } else {
         1
     };
@@ -1394,6 +1452,45 @@ mod tests {
     use std::fmt::Write;
     use std::path::PathBuf;
 
+    #[test]
+    fn read_line_capped_rejects_byte_count_overflow() {
+        let mut reader = &b"a"[..];
+        let mut bytes = u64::MAX;
+        let error = read_line_capped(&mut reader, &mut bytes, u64::MAX, usize::MAX).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(bytes, u64::MAX);
+    }
+
+    #[test]
+    fn validate_model_header_rejects_pair_count_overflow() {
+        let error =
+            validate_model_header(SvmType::CSvc, usize::MAX, 0, &[], &[], &[], &[], &[], &[])
+                .unwrap_err();
+        assert!(
+            matches!(error, SvmError::ModelFormatError(message) if message.contains("overflow"))
+        );
+    }
+
+    #[test]
+    fn validate_model_rejects_short_coefficient_row() {
+        let mut model = load_model(&data_dir().join("heart_scale.model")).unwrap();
+        model.sv_coef.first_mut().unwrap().pop();
+        assert!(matches!(
+            validate_model(&model),
+            Err(SvmError::ModelFormatError(_))
+        ));
+    }
+
+    #[test]
+    fn save_model_to_writer_rejects_short_coefficient_row() {
+        let mut model = load_model(&data_dir().join("heart_scale.model")).unwrap();
+        model.sv_coef.first_mut().unwrap().clear();
+        assert!(matches!(
+            save_model_to_writer(Vec::new(), &model),
+            Err(SvmError::ModelFormatError(_))
+        ));
+    }
+
     fn data_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
@@ -1408,15 +1505,15 @@ mod tests {
         assert_eq!(problem.labels.len(), 270);
         assert_eq!(problem.instances.len(), 270);
         // First instance: +1 label, 12 features (index 11 is missing/sparse)
-        assert_eq!(problem.labels[0], 1.0);
+        assert_eq!(*problem.labels.first().unwrap(), 1.0);
         assert_eq!(
-            problem.instances[0][0],
+            *problem.instances.first().unwrap().first().unwrap(),
             SvmNode {
                 index: 1,
                 value: 0.708_333
             }
         );
-        assert_eq!(problem.instances[0].len(), 12);
+        assert_eq!(problem.instances.first().unwrap().len(), 12);
     }
 
     #[test]
@@ -1440,7 +1537,7 @@ mod tests {
         let problem = load_problem(&path).unwrap();
         assert_eq!(problem.labels.len(), 506);
         // Regression: labels are continuous
-        assert!((problem.labels[0] - 24.0).abs() < 1e-10);
+        assert!((*problem.labels.first().unwrap() - 24.0).abs() < 1e-10);
     }
 
     #[test]
@@ -1489,10 +1586,10 @@ mod tests {
         assert_eq!(model.sv.len(), 132);
         assert_eq!(model.label, vec![1, -1]);
         assert_eq!(model.n_sv, vec![64, 68]);
-        assert!((model.rho[0] - 0.424_462_051_767_715_73).abs() < 1e-15);
+        assert!((*model.rho.first().unwrap() - 0.424_462_051_767_715_73).abs() < 1e-15);
         // sv_coef should have 1 row (nr_class - 1) with 132 entries
         assert_eq!(model.sv_coef.len(), 1);
-        assert_eq!(model.sv_coef[0].len(), 132);
+        assert_eq!(model.sv_coef.first().unwrap().len(), 132);
     }
 
     #[test]
@@ -2016,7 +2113,7 @@ SV\n\
         assert!(text.contains("0.25 0:2147483647 \n"), "model text: {text}");
 
         let loaded = load_model_from_reader(&first[..]).unwrap();
-        let node = loaded.sv[0][0];
+        let node = *loaded.sv.first().unwrap().first().unwrap();
         assert_eq!(node.index, 0);
         // Tolerance zero: an integer serial must survive text output and
         // reading exactly, so the comparison is on the bits of the `f64`.
@@ -2103,7 +2200,7 @@ SV\n\
             index: 0,
             value: 2_147_483_648.0,
         }]);
-        invalid.sv_coef[0].push(0.5);
+        invalid.sv_coef.first_mut().unwrap().push(0.5);
         invalid.n_sv = vec![2, 0];
         let result = save_model(&path, &invalid);
         let after = std::fs::read(&path);
@@ -2342,7 +2439,7 @@ SV\n\
 -0.1 2:0.5\n";
         let model = load_model_from_reader(&input[..]).unwrap();
         assert_eq!(model.sv.len(), 2);
-        assert_eq!(model.sv_coef[0].len(), 2);
+        assert_eq!(model.sv_coef.first().unwrap().len(), 2);
     }
 
     #[test]

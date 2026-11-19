@@ -10,16 +10,8 @@
     test,
     expect(
         clippy::unwrap_used,
-        reason = "Checked access is not yet done in this module; remove this line when it is"
+        reason = "Tests unwrap fixture loading and checked assertions"
     )
-)]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
-)]
-#![expect(
-    clippy::arithmetic_side_effects,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
 )]
 
 use crate::kernel::k_function;
@@ -34,21 +26,33 @@ use crate::types::{SvmModel, SvmNode, SvmType};
 /// Returns the predicted label (classification) or function value (regression).
 ///
 /// Matches LIBSVM's `svm_predict_values`.
+/// # Panics
+///
+/// Panics if model arrays are inconsistent, class counts overflow, or the decision buffer is too short.
 pub fn predict_values(model: &SvmModel, x: &[SvmNode], dec_values: &mut [f64]) -> f64 {
+    let value = try_predict_values(model, x, dec_values);
+    #[expect(
+        clippy::expect_used,
+        reason = "try_predict_values checks model slices, pair counts and the decision buffer"
+    )]
+    value.expect("prediction requires consistent model arrays and a sufficient decision buffer")
+}
+
+fn try_predict_values(model: &SvmModel, x: &[SvmNode], dec_values: &mut [f64]) -> Option<f64> {
     match model.param.svm_type {
         SvmType::OneClass | SvmType::EpsilonSvr | SvmType::NuSvr => {
-            let sv_coef = &model.sv_coef[0];
+            let sv_coef = model.sv_coef.first()?.get(..model.sv.len())?;
             let mut sum = 0.0;
-            for (i, sv) in model.sv.iter().enumerate() {
-                sum += sv_coef[i] * k_function(x, sv, &model.param);
+            for (&coef, sv) in sv_coef.iter().zip(&model.sv) {
+                sum += coef * k_function(x, sv, &model.param);
             }
-            sum -= model.rho[0];
-            dec_values[0] = sum;
+            sum -= model.rho.first()?;
+            *dec_values.first_mut()? = sum;
 
             if model.param.svm_type == SvmType::OneClass {
-                if sum > 0.0 { 1.0 } else { -1.0 }
+                Some(if sum > 0.0 { 1.0 } else { -1.0 })
             } else {
-                sum
+                Some(sum)
             }
         }
         SvmType::CSvc | SvmType::NuSvc => {
@@ -62,41 +66,45 @@ pub fn predict_values(model: &SvmModel, x: &[SvmNode], dec_values: &mut [f64]) -
                 .map(|sv| k_function(x, sv, &model.param))
                 .collect();
 
-            // Compute start indices for each class's SVs
+            let counts = model.n_sv.get(..nr_class)?;
+            let labels = model.label.get(..nr_class)?;
             let mut start = vec![0usize; nr_class];
-            for i in 1..nr_class {
-                start[i] = start[i - 1] + model.n_sv[i - 1];
+            let mut cumulative = 0usize;
+            for (slot, &n) in start.iter_mut().zip(counts) {
+                *slot = cumulative;
+                cumulative = cumulative.checked_add(n)?;
             }
-
-            // One-vs-one voting
+            if cumulative != l || nr_class == 0 {
+                return None;
+            }
+            let pairs = pair_count(nr_class)?;
+            let mut rhos = model.rho.get(..pairs)?.iter();
+            let mut outputs = dec_values.get_mut(..pairs)?.iter_mut();
             let mut vote = vec![0usize; nr_class];
-            let mut p = 0;
             for i in 0..nr_class {
-                for j in (i + 1)..nr_class {
+                for j in i.checked_add(1)?..nr_class {
                     let mut sum = 0.0;
-                    let si = start[i];
-                    let sj = start[j];
-                    let ci = model.n_sv[i];
-                    let cj = model.n_sv[j];
-
-                    let coef1 = &model.sv_coef[j - 1];
-                    let coef2 = &model.sv_coef[i];
-
-                    for k in 0..ci {
-                        sum += coef1[si + k] * kvalue[si + k];
+                    let si = *start.get(i)?;
+                    let sj = *start.get(j)?;
+                    let ci = *counts.get(i)?;
+                    let cj = *counts.get(j)?;
+                    let end_i = si.checked_add(ci)?;
+                    let end_j = sj.checked_add(cj)?;
+                    let coef1 = model.sv_coef.get(j.checked_sub(1)?)?.get(si..end_i)?;
+                    let coef2 = model.sv_coef.get(i)?.get(sj..end_j)?;
+                    let kernels_i = kvalue.get(si..end_i)?;
+                    let kernels_j = kvalue.get(sj..end_j)?;
+                    for (&coef, &kernel) in coef1.iter().zip(kernels_i) {
+                        sum += coef * kernel;
                     }
-                    for k in 0..cj {
-                        sum += coef2[sj + k] * kvalue[sj + k];
+                    for (&coef, &kernel) in coef2.iter().zip(kernels_j) {
+                        sum += coef * kernel;
                     }
-                    sum -= model.rho[p];
-                    dec_values[p] = sum;
-
-                    if sum > 0.0 {
-                        vote[i] += 1;
-                    } else {
-                        vote[j] += 1;
-                    }
-                    p += 1;
+                    sum -= rhos.next()?;
+                    *outputs.next()? = sum;
+                    let winner = if sum > 0.0 { i } else { j };
+                    let votes = vote.get_mut(winner)?;
+                    *votes = votes.checked_add(1)?;
                 }
             }
 
@@ -107,8 +115,7 @@ pub fn predict_values(model: &SvmModel, x: &[SvmNode], dec_values: &mut [f64]) -
                 .max_by_key(|&(_, &v)| v)
                 .map_or(0, |(i, _)| i);
 
-            let _ = l; // suppress unused warning
-            f64::from(model.label[vote_max_idx])
+            Some(f64::from(*labels.get(vote_max_idx)?))
         }
     }
 }
@@ -141,14 +148,30 @@ pub fn predict_values(model: &SvmModel, x: &[SvmNode], dec_values: &mut [f64]) -
 /// assert_eq!(predict(&model, &[SvmNode { index: 1, value: 1.5 }]), 1.0);
 /// # Ok::<(), libsvm_rs::SvmError>(())
 /// ```
+/// # Panics
+///
+/// Panics if model arrays are inconsistent or class pair counts overflow.
 #[must_use]
 pub fn predict(model: &SvmModel, x: &[SvmNode]) -> f64 {
+    let value = try_predict(model, x);
+    #[expect(
+        clippy::expect_used,
+        reason = "try_predict checks class pair arithmetic and delegates model slice checks"
+    )]
+    value.expect("prediction requires consistent model arrays and representable class pair counts")
+}
+
+fn pair_count(classes: usize) -> Option<usize> {
+    Some(classes.checked_mul(classes.checked_sub(1)?)? / 2)
+}
+
+fn try_predict(model: &SvmModel, x: &[SvmNode]) -> Option<f64> {
     let n = match model.param.svm_type {
         SvmType::OneClass | SvmType::EpsilonSvr | SvmType::NuSvr => 1,
-        SvmType::CSvc | SvmType::NuSvc => model.nr_class * (model.nr_class - 1) / 2,
+        SvmType::CSvc | SvmType::NuSvc => pair_count(model.nr_class)?,
     };
     let mut dec_values = vec![0.0; n];
-    predict_values(model, x, &mut dec_values)
+    try_predict_values(model, x, &mut dec_values)
 }
 
 /// Predict with probability estimates.
@@ -165,59 +188,91 @@ pub fn predict(model: &SvmModel, x: &[SvmNode]) -> f64 {
 /// - **SVR**: probability prediction is not supported (returns `None`).
 ///
 /// Matches LIBSVM's `svm_predict_probability`.
+/// # Panics
+///
+/// Panics if a probability model has inconsistent arrays or class pair counts overflow.
 #[must_use]
 pub fn predict_probability(model: &SvmModel, x: &[SvmNode]) -> Option<(f64, Vec<f64>)> {
-    match model.param.svm_type {
-        SvmType::CSvc | SvmType::NuSvc if !model.prob_a.is_empty() && !model.prob_b.is_empty() => {
-            let nr_class = model.nr_class;
-            let n_pairs = nr_class * (nr_class - 1) / 2;
-            let mut dec_values = vec![0.0; n_pairs];
-            predict_values(model, x, &mut dec_values);
+    let value = try_predict_probability(model, x);
+    #[expect(clippy::expect_used, reason = "try_predict_probability checks probability arrays, pair counts and model slices")]
+    value.expect("probability prediction requires consistent model arrays and representable class pair counts")
+}
 
-            let min_prob = 1e-7;
+fn try_predict_probability(
+    model: &SvmModel,
+    x: &[SvmNode],
+) -> Result<Option<(f64, Vec<f64>)>, &'static str> {
+    (|| {
+        match model.param.svm_type {
+            SvmType::CSvc | SvmType::NuSvc
+                if !model.prob_a.is_empty() && !model.prob_b.is_empty() =>
+            {
+                let nr_class = model.nr_class;
+                let n_pairs = pair_count(nr_class)?;
+                let mut dec_values = vec![0.0; n_pairs];
+                try_predict_values(model, x, &mut dec_values)?;
 
-            // Build pairwise probability matrix
-            let mut pairwise = vec![vec![0.0; nr_class]; nr_class];
-            let mut k = 0;
-            for i in 0..nr_class {
-                for j in (i + 1)..nr_class {
-                    let p = sigmoid_predict(dec_values[k], model.prob_a[k], model.prob_b[k])
-                        .max(min_prob)
-                        .min(1.0 - min_prob);
-                    pairwise[i][j] = p;
-                    pairwise[j][i] = 1.0 - p;
-                    k += 1;
+                let min_prob = 1e-7;
+
+                // Build pairwise probability matrix
+                let mut pairwise = vec![vec![0.0; nr_class]; nr_class];
+                let parameters = model
+                    .prob_a
+                    .get(..n_pairs)?
+                    .iter()
+                    .zip(model.prob_b.get(..n_pairs)?);
+                let mut values = dec_values.iter().zip(parameters);
+                for i in 0..nr_class {
+                    let next = i.checked_add(1)?;
+                    let (before, after) = pairwise.split_at_mut_checked(next)?;
+                    let row_i = before.last_mut()?;
+                    for (slot, row_j) in row_i.get_mut(next..)?.iter_mut().zip(after) {
+                        let (&decision, (&a, &b)) = values.next()?;
+                        let p = sigmoid_predict(decision, a, b)
+                            .max(min_prob)
+                            .min(1.0 - min_prob);
+                        *slot = p;
+                        // pairwise has nr_class columns per row, and i is below nr_class.
+                        #[expect(clippy::indexing_slicing, reason = "pairwise is allocated as nr_class by nr_class; i is below nr_class")]
+                        let opposite = &mut row_j[i];
+                        *opposite = 1.0 - p;
+                    }
                 }
-            }
 
-            let mut prob_estimates = vec![0.0; nr_class];
-            if nr_class == 2 {
-                prob_estimates[0] = pairwise[0][1];
-                prob_estimates[1] = pairwise[1][0];
-            } else {
-                multiclass_probability(nr_class, &pairwise, &mut prob_estimates);
-            }
-
-            // Find class with highest probability
-            let mut best = 0;
-            for i in 1..nr_class {
-                if prob_estimates[i] > prob_estimates[best] {
-                    best = i;
+                let mut prob_estimates = vec![0.0; nr_class];
+                if nr_class == 2 {
+                    let [first, second] = prob_estimates.as_mut_slice() else {
+                        return None;
+                    };
+                    *first = *pairwise.first()?.get(1)?;
+                    *second = *pairwise.get(1)?.first()?;
+                } else {
+                    multiclass_probability(nr_class, &pairwise, &mut prob_estimates);
                 }
+
+                // Find class with highest probability
+                let mut best = 0;
+                let mut best_value = *prob_estimates.first()?;
+                for (i, &value) in prob_estimates.iter().enumerate().skip(1) {
+                    if value > best_value {
+                        best = i;
+                        best_value = value;
+                    }
+                }
+                Some(Some((f64::from(*model.label.get(best)?), prob_estimates)))
             }
 
-            Some((f64::from(model.label[best]), prob_estimates))
-        }
+            SvmType::OneClass if !model.prob_density_marks.is_empty() => {
+                let mut dec_value = [0.0];
+                let pred_result = try_predict_values(model, x, &mut dec_value)?;
+                let p = predict_one_class_probability(&model.prob_density_marks, dec_value[0]);
+                Some(Some((pred_result, vec![p, 1.0 - p])))
+            }
 
-        SvmType::OneClass if !model.prob_density_marks.is_empty() => {
-            let mut dec_value = [0.0];
-            let pred_result = predict_values(model, x, &mut dec_value);
-            let p = predict_one_class_probability(&model.prob_density_marks, dec_value[0]);
-            Some((pred_result, vec![p, 1.0 - p]))
+            _ => Some(None),
         }
-
-        _ => None,
-    }
+    })()
+    .ok_or("inconsistent probability model arrays or class pair counts")
 }
 
 #[cfg(test)]
@@ -226,6 +281,41 @@ mod tests {
     use crate::io::load_model;
     use crate::io::load_problem;
     use std::path::PathBuf;
+
+    #[test]
+    fn pair_count_rejects_overflow() {
+        assert!(pair_count(0).is_none());
+        assert!(pair_count(usize::MAX).is_none());
+        assert_eq!(pair_count(3), Some(3));
+    }
+
+    #[test]
+    fn try_predict_values_rejects_short_buffer_and_coefficients() {
+        let mut model = load_model(&data_dir().join("heart_scale.model")).unwrap();
+        assert!(try_predict_values(&model, &[], &mut []).is_none());
+        model.sv_coef.clear();
+        assert!(try_predict_values(&model, &[], &mut [0.0]).is_none());
+    }
+
+    #[test]
+    fn try_predict_rejects_inconsistent_model() {
+        let mut model = load_model(&data_dir().join("heart_scale.model")).unwrap();
+        model.rho.clear();
+        assert!(try_predict(&model, &[]).is_none());
+    }
+
+    #[test]
+    fn try_predict_probability_rejects_short_probability_arrays() {
+        let mut model = load_model(&data_dir().join("heart_scale.model")).unwrap();
+        model.nr_class = 3;
+        model.label.push(3);
+        model.n_sv.push(0);
+        model.rho.resize(3, 0.0);
+        model.sv_coef.push(model.sv_coef.first().unwrap().clone());
+        model.prob_a = vec![0.0];
+        model.prob_b = vec![0.0];
+        assert!(try_predict_probability(&model, &[]).is_err());
+    }
 
     fn data_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -251,8 +341,8 @@ mod tests {
         let mut correct = 0;
         for (i, instance) in problem.instances.iter().enumerate() {
             let pred = predict(&model, instance);
-            if pred == problem.labels[i] {
-                correct += 1;
+            if pred == *problem.labels.get(i).unwrap() {
+                correct = i32::checked_add(correct, 1).unwrap();
             }
         }
 
@@ -272,12 +362,12 @@ mod tests {
 
         // For binary classification, there's exactly 1 decision value
         let mut dec_values = vec![0.0; 1];
-        let label = predict_values(&model, &problem.instances[0], &mut dec_values);
+        let label = predict_values(&model, problem.instances.first().unwrap(), &mut dec_values);
 
         // Decision value should be non-zero
-        assert!(dec_values[0].abs() > 1e-10);
+        assert!(dec_values.first().unwrap().abs() > 1e-10);
         // Label should match what predict returns
-        assert_eq!(label, predict(&model, &problem.instances[0]));
+        assert_eq!(label, predict(&model, problem.instances.first().unwrap()));
     }
 
     #[test]
@@ -393,8 +483,8 @@ mod tests {
                 let mut mismatches = 0;
                 for (i, instance) in problem.instances.iter().enumerate() {
                     let rust_pred = predict(&model, instance);
-                    if rust_pred != c_preds[i] {
-                        mismatches += 1;
+                    if rust_pred != *c_preds.get(i).unwrap() {
+                        mismatches = i32::checked_add(mismatches, 1).unwrap();
                     }
                 }
 

@@ -8,16 +8,8 @@
     test,
     expect(
         clippy::unwrap_used,
-        reason = "Checked access is not yet done in this module; remove this line when it is"
+        reason = "Tests unwrap fixture loading and checked assertions"
     )
-)]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
-)]
-#![expect(
-    clippy::arithmetic_side_effects,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
 )]
 
 use crate::predict::{predict, predict_probability};
@@ -35,12 +27,16 @@ fn predict_cv_target(model: &SvmModel, param: &SvmParameter, x: &[SvmNode]) -> f
     }
 }
 
-fn fold_starts(fold_count: &[usize]) -> Vec<usize> {
-    let mut fold_start = vec![0usize; fold_count.len() + 1];
-    for i in 0..fold_count.len() {
-        fold_start[i + 1] = fold_start[i] + fold_count[i];
+fn fold_starts(fold_count: &[usize]) -> Option<Vec<usize>> {
+    let capacity = fold_count.len().checked_add(1)?;
+    let mut starts = Vec::with_capacity(capacity);
+    let mut total = 0usize;
+    starts.push(total);
+    for &count in fold_count {
+        total = total.checked_add(count)?;
+        starts.push(total);
     }
-    fold_start
+    Some(starts)
 }
 
 fn is_stratified_cv(param: &SvmParameter, nr_fold: usize, l: usize) -> bool {
@@ -53,21 +49,26 @@ fn evaluate_fold(
     perm: &[usize],
     begin: usize,
     end: usize,
-) -> Vec<f64> {
+) -> Option<Vec<f64>> {
     let l = prob.labels.len();
 
     // Build sub-problem excluding held-out [begin..end)
-    let sub_l = l - (end - begin);
+    if prob.instances.len() != l || perm.len() != l {
+        return None;
+    }
+    let held_len = end.checked_sub(begin)?;
+    let sub_l = l.checked_sub(held_len)?;
+    let held = perm.get(begin..end)?;
     let mut sub_labels = Vec::with_capacity(sub_l);
     let mut sub_instances = Vec::with_capacity(sub_l);
 
-    for &pi in &perm[..begin] {
-        sub_labels.push(prob.labels[pi]);
-        sub_instances.push(prob.instances[pi].clone());
+    for &pi in perm.get(..begin)? {
+        sub_labels.push(*prob.labels.get(pi)?);
+        sub_instances.push(prob.instances.get(pi)?.clone());
     }
-    for &pi in &perm[end..l] {
-        sub_labels.push(prob.labels[pi]);
-        sub_instances.push(prob.instances[pi].clone());
+    for &pi in perm.get(end..l)? {
+        sub_labels.push(*prob.labels.get(pi)?);
+        sub_instances.push(prob.instances.get(pi)?.clone());
     }
 
     let subprob = SvmProblem {
@@ -80,8 +81,8 @@ fn evaluate_fold(
     #[cfg(not(feature = "rayon"))]
     let submodel = svm_train(&subprob, param);
 
-    (begin..end)
-        .map(|j| predict_cv_target(&submodel, param, &prob.instances[perm[j]]))
+    held.iter()
+        .map(|&i| Some(predict_cv_target(&submodel, param, prob.instances.get(i)?)))
         .collect()
 }
 
@@ -121,146 +122,121 @@ fn evaluate_fold(
 /// # Ok::<(), libsvm_rs::SvmError>(())
 /// ```
 #[must_use]
-#[expect(clippy::too_many_lines, reason = "Keep the source loop in one place")]
-pub fn svm_cross_validation(
+/// # Panics
+///
+/// Panics if row lengths differ, row counts exceed 2^53, fold arithmetic overflows,
+/// internal offsets are inconsistent, or training rejects a fold.
+pub fn svm_cross_validation(prob: &SvmProblem, param: &SvmParameter, nr_fold: usize) -> Vec<f64> {
+    let targets = try_cross_validation(prob, param, nr_fold);
+    #[expect(
+        clippy::expect_used,
+        reason = "try_cross_validation checks problem lengths, fold arithmetic and permutation slices"
+    )]
+    targets.expect(
+        "cross-validation requires consistent row lengths, fold offsets and at most 2^53 rows",
+    )
+}
+
+fn try_cross_validation(
     prob: &SvmProblem,
     param: &SvmParameter,
     mut nr_fold: usize,
-) -> Vec<f64> {
+) -> Option<Vec<f64>> {
     let l = prob.labels.len();
-
-    if l == 0 {
-        return Vec::new();
+    if prob.instances.len() != l || l as u128 > (1u128 << 53) {
+        return None;
     }
-
+    if l == 0 {
+        return Some(Vec::new());
+    }
     if nr_fold == 0 {
         crate::info(
-            "WARNING: # folds (0) <= 0. Will use # folds = # data instead \
-             (i.e., leave-one-out cross validation)\n",
+            "WARNING: # folds (0) <= 0. Will use # folds = # data instead (i.e., leave-one-out cross validation)\n",
         );
         nr_fold = l;
     }
-
     if nr_fold > l {
         crate::info(&format!(
-            "WARNING: # folds ({nr_fold}) > # data ({l}). Will use # folds = # data instead \
-             (i.e., leave-one-out cross validation)\n"
+            "WARNING: # folds ({nr_fold}) > # data ({l}). Will use # folds = # data instead (i.e., leave-one-out cross validation)\n"
         ));
         nr_fold = l;
     }
-
     let mut perm: Vec<usize> = (0..l).collect();
-
-    // ── Fold assignment ──────────────────────────────────────────
-    let (_fold_count, fold_start) = if is_stratified_cv(param, nr_fold, l) {
-        // Stratified: group by class, shuffle within class, distribute
-        let grouped = group_classes(&prob.labels);
-        let nr_class = grouped.label.len();
-        let start = &grouped.start;
-        let count = &grouped.count;
+    let fold_start = if is_stratified_cv(param, nr_fold, l) {
+        let grouped = group_classes(&prob.labels)?;
         let mut index = grouped.perm;
-
-        // Shuffle within each class
-        for c in 0..nr_class {
-            let s = start[c];
-            let n = count[c];
-            shuffle_range(&mut index, s, n);
+        for (&start, &count) in grouped.start.iter().zip(&grouped.count) {
+            shuffle_range(&mut index, start, count)?;
         }
-
-        // Compute fold sizes
         let fold_count: Vec<usize> = (0..nr_fold)
             .map(|i| {
-                count
-                    .iter()
-                    .map(|&cnt| ((i + 1) * cnt) / nr_fold - (i * cnt) / nr_fold)
-                    .sum()
+                grouped.count.iter().try_fold(0usize, |total, &count| {
+                    let begin = i.checked_mul(count)?.checked_div(nr_fold)?;
+                    let end = i.checked_add(1)?.checked_mul(count)?.checked_div(nr_fold)?;
+                    total.checked_add(end.checked_sub(begin)?)
+                })
             })
-            .collect();
-        let fold_start = fold_starts(&fold_count);
-        // Distribute samples to folds, preserving class balance
-        // (C++ increments fold_start[i] as a running pointer; we
-        // use a separate offset array to keep fold_start immutable.)
-        let mut offset = vec![0usize; nr_fold];
-        for c in 0..nr_class {
-            for i in 0..nr_fold {
-                let begin = start[c] + (i * count[c]) / nr_fold;
-                let end = start[c] + ((i + 1) * count[c]) / nr_fold;
-                for &idx in &index[begin..end] {
-                    perm[fold_start[i] + offset[i]] = idx;
-                    offset[i] += 1;
+            .collect::<Option<_>>()?;
+        let starts = fold_starts(&fold_count)?;
+        let mut offsets = vec![0usize; nr_fold];
+        for (&start, &count) in grouped.start.iter().zip(&grouped.count) {
+            for (i, offset) in offsets.iter_mut().enumerate() {
+                let begin = start.checked_add(i.checked_mul(count)?.checked_div(nr_fold)?)?;
+                let end = start
+                    .checked_add(i.checked_add(1)?.checked_mul(count)?.checked_div(nr_fold)?)?;
+                let input = index.get(begin..end)?;
+                let out_begin = starts.get(i)?.checked_add(*offset)?;
+                let out_end = out_begin.checked_add(input.len())?;
+                let output = perm.get_mut(out_begin..out_end)?;
+                for (slot, &idx) in output.iter_mut().zip(input) {
+                    *slot = idx;
                 }
+                *offset = offset.checked_add(input.len())?;
             }
         }
-        (fold_count, fold_start)
+        starts
     } else {
-        // Simple random shuffle
-        shuffle_range(&mut perm, 0, l);
-        let fold_count: Vec<usize> = (0..nr_fold)
-            .map(|i| (i + 1) * l / nr_fold - i * l / nr_fold)
-            .collect();
-        let fold_start = fold_starts(&fold_count);
-        (fold_count, fold_start)
+        shuffle_range(&mut perm, 0, l)?;
+        let counts: Vec<usize> = (0..nr_fold)
+            .map(|i| {
+                let begin = i.checked_mul(l)?.checked_div(nr_fold)?;
+                let end = i.checked_add(1)?.checked_mul(l)?.checked_div(nr_fold)?;
+                end.checked_sub(begin)
+            })
+            .collect::<Option<_>>()?;
+        fold_starts(&counts)?
     };
-
-    // ── Evaluate each fold ───────────────────────────────────────
     let mut target = vec![0.0; l];
-
     #[cfg(feature = "rayon")]
-    {
-        if param.probability {
-            // Probability training performs its own deterministic CV shuffles.
-            // Keep this outer loop serial so the shared LIBSVM-compatible PRNG
-            // is consumed in the same order as the default build.
-            for i in 0..nr_fold {
-                let begin = fold_start[i];
-                let end = fold_start[i + 1];
-                let predictions = evaluate_fold(prob, param, &perm, begin, end);
-
-                for (j, prediction) in (begin..end).zip(predictions) {
-                    target[perm[j]] = prediction;
-                }
-            }
-        } else {
-            let mut target_in_permuted_order = vec![0.0; l];
-            let mut fold_slices = Vec::with_capacity(nr_fold);
-            let mut remaining = target_in_permuted_order.as_mut_slice();
-            for i in 0..nr_fold {
-                let fold_len = fold_start[i + 1] - fold_start[i];
-                let (fold_slice, rest) = remaining.split_at_mut(fold_len);
-                fold_slices.push(fold_slice);
-                remaining = rest;
-            }
-
-            fold_slices
-                .into_par_iter()
-                .enumerate()
-                .for_each(|(i, fold_target)| {
-                    let begin = fold_start[i];
-                    let end = fold_start[i + 1];
-                    let predictions = evaluate_fold(prob, param, &perm, begin, end);
-                    fold_target.copy_from_slice(&predictions);
-                });
-
-            for (prediction, &original_idx) in target_in_permuted_order.iter().zip(perm.iter()) {
-                target[original_idx] = *prediction;
+    if !param.probability {
+        let predictions: Vec<Vec<f64>> = fold_start
+            .par_windows(2)
+            .map(|bounds| {
+                let [begin, end] = bounds else {
+                    return None;
+                };
+                evaluate_fold(prob, param, &perm, *begin, *end)
+            })
+            .collect::<Option<_>>()?;
+        let mut output = perm.iter();
+        for fold in predictions {
+            for prediction in fold {
+                *target.get_mut(*output.next()?)? = prediction;
             }
         }
+        return Some(target);
     }
-
-    #[cfg(not(feature = "rayon"))]
-    {
-        for i in 0..nr_fold {
-            let begin = fold_start[i];
-            let end = fold_start[i + 1];
-            let predictions = evaluate_fold(prob, param, &perm, begin, end);
-
-            for (j, prediction) in (begin..end).zip(predictions) {
-                target[perm[j]] = prediction;
-            }
+    // Probability training consumes the shared PRNG in fold order.
+    for bounds in fold_start.windows(2) {
+        let [begin, end] = bounds else {
+            return None;
+        };
+        let predictions = evaluate_fold(prob, param, &perm, *begin, *end)?;
+        for (&idx, prediction) in perm.get(*begin..*end)?.iter().zip(predictions) {
+            *target.get_mut(idx)? = prediction;
         }
     }
-
-    target
+    Some(target)
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────
@@ -271,6 +247,34 @@ mod tests {
     use crate::io::load_problem;
     use crate::types::{KernelType, SvmModel, SvmNode};
     use std::path::PathBuf;
+
+    #[test]
+    fn fold_starts_rejects_overflow() {
+        assert!(fold_starts(&[usize::MAX, 1]).is_none());
+        assert_eq!(fold_starts(&[2, 0, 1]), Some(vec![0, 2, 2, 3]));
+    }
+
+    #[test]
+    fn evaluate_fold_rejects_inconsistent_rows_and_offsets() {
+        let mut problem = SvmProblem {
+            labels: vec![1.0],
+            instances: Vec::new(),
+        };
+        let param = SvmParameter::default();
+        assert!(evaluate_fold(&problem, &param, &[0], 0, 1).is_none());
+        problem.instances.push(Vec::new());
+        assert!(evaluate_fold(&problem, &param, &[0], 1, 0).is_none());
+        assert!(evaluate_fold(&problem, &param, &[0], 0, 2).is_none());
+    }
+
+    #[test]
+    fn try_cross_validation_rejects_inconsistent_rows() {
+        let problem = SvmProblem {
+            labels: vec![1.0],
+            instances: Vec::new(),
+        };
+        assert!(try_cross_validation(&problem, &SvmParameter::default(), 2).is_none());
+    }
 
     fn data_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))

@@ -8,23 +8,15 @@
     test,
     expect(
         clippy::unwrap_used,
-        reason = "Checked access is not yet done in this module; remove this line when it is"
+        reason = "Tests unwrap fixture loading and checked assertions"
     )
 )]
 #![cfg_attr(
     test,
     expect(
         clippy::expect_used,
-        reason = "Checked access is not yet done in this module; remove this line when it is"
+        reason = "Tests unwrap fixture loading and checked assertions"
     )
-)]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
-)]
-#![expect(
-    clippy::arithmetic_side_effects,
-    reason = "Checked access is not yet done in this module; remove this line when it is"
 )]
 
 use crate::predict::predict_values;
@@ -42,12 +34,26 @@ use rayon::prelude::*;
 /// P(y=1|f) = 1/(1+exp(A*f+B)) using the algorithm of Lin, Lin &
 /// Weng (2007). Matches LIBSVM's `sigmoid_train`.
 #[must_use]
+/// # Panics
+///
+/// Panics if lengths differ or the row count exceeds 2^53.
+pub fn sigmoid_train(dec_values: &[f64], labels: &[f64]) -> (f64, f64) {
+    let parameters = try_sigmoid_train(dec_values, labels);
+    #[expect(
+        clippy::expect_used,
+        reason = "try_sigmoid_train checks equal lengths and the exact f64 count limit"
+    )]
+    parameters.expect("sigmoid training requires equal lengths and at most 2^53 rows")
+}
+
 #[expect(
     clippy::many_single_char_names,
     reason = "The C solver uses these short names"
 )]
-pub fn sigmoid_train(dec_values: &[f64], labels: &[f64]) -> (f64, f64) {
-    let l = dec_values.len();
+fn try_sigmoid_train(dec_values: &[f64], labels: &[f64]) -> Option<(f64, f64)> {
+    if dec_values.len() != labels.len() || dec_values.len() as u128 > (1u128 << 53) {
+        return None;
+    }
 
     let mut prior1: f64 = 0.0;
     let mut prior0: f64 = 0.0;
@@ -78,12 +84,12 @@ pub fn sigmoid_train(dec_values: &[f64], labels: &[f64]) -> (f64, f64) {
 
     // Initial objective
     let mut fval = 0.0;
-    for i in 0..l {
-        let f_apb = dec_values[i] * a + b;
+    for (&decision, &target) in dec_values.iter().zip(&t) {
+        let f_apb = decision * a + b;
         if f_apb >= 0.0 {
-            fval += t[i] * f_apb + (1.0 + (-f_apb).exp()).ln();
+            fval += target * f_apb + (1.0 + (-f_apb).exp()).ln();
         } else {
-            fval += (t[i] - 1.0) * f_apb + (1.0 + f_apb.exp()).ln();
+            fval += (target - 1.0) * f_apb + (1.0 + f_apb.exp()).ln();
         }
     }
 
@@ -95,8 +101,8 @@ pub fn sigmoid_train(dec_values: &[f64], labels: &[f64]) -> (f64, f64) {
         let mut g1 = 0.0;
         let mut g2 = 0.0;
 
-        for i in 0..l {
-            let f_apb = dec_values[i] * a + b;
+        for (&decision, &target) in dec_values.iter().zip(&t) {
+            let f_apb = decision * a + b;
             let (p, q) = if f_apb >= 0.0 {
                 let e = (-f_apb).exp();
                 (e / (1.0 + e), 1.0 / (1.0 + e))
@@ -105,11 +111,11 @@ pub fn sigmoid_train(dec_values: &[f64], labels: &[f64]) -> (f64, f64) {
                 (1.0 / (1.0 + e), e / (1.0 + e))
             };
             let d2 = p * q;
-            h11 += dec_values[i] * dec_values[i] * d2;
+            h11 += decision * decision * d2;
             h22 += d2;
-            h21 += dec_values[i] * d2;
-            let d1 = t[i] - p;
-            g1 += dec_values[i] * d1;
+            h21 += decision * d2;
+            let d1 = target - p;
+            g1 += decision * d1;
             g2 += d1;
         }
 
@@ -130,12 +136,12 @@ pub fn sigmoid_train(dec_values: &[f64], labels: &[f64]) -> (f64, f64) {
             let new_b = b + stepsize * db;
 
             let mut newf = 0.0;
-            for i in 0..l {
-                let f_apb = dec_values[i] * new_a + new_b;
+            for (&decision, &target) in dec_values.iter().zip(&t) {
+                let f_apb = decision * new_a + new_b;
                 if f_apb >= 0.0 {
-                    newf += t[i] * f_apb + (1.0 + (-f_apb).exp()).ln();
+                    newf += target * f_apb + (1.0 + (-f_apb).exp()).ln();
                 } else {
-                    newf += (t[i] - 1.0) * f_apb + (1.0 + f_apb.exp()).ln();
+                    newf += (target - 1.0) * f_apb + (1.0 + f_apb.exp()).ln();
                 }
             }
 
@@ -153,7 +159,7 @@ pub fn sigmoid_train(dec_values: &[f64], labels: &[f64]) -> (f64, f64) {
         }
     }
 
-    (a, b)
+    Some((a, b))
 }
 
 /// Numerically stable sigmoid prediction.
@@ -179,51 +185,92 @@ pub fn sigmoid_predict(decision_value: f64, a: f64, b: f64) -> f64 {
 /// probabilities using the Wu-Lin-Weng iterative method.
 ///
 /// Matches LIBSVM's `multiclass_probability`.
-#[expect(
-    clippy::needless_range_loop,
-    reason = "Keep the C loop order for comparison with the original"
-)]
+/// # Panics
+///
+/// Panics if the matrix or output is smaller than `k`, or `k` exceeds 2^53.
+pub fn multiclass_probability(k: usize, r: &[Vec<f64>], p: &mut [f64]) {
+    let result = try_multiclass_probability(k, r, p);
+    #[expect(
+        clippy::expect_used,
+        reason = "try_multiclass_probability checks matrix dimensions, output length and class count"
+    )]
+    result.expect(
+        "multiclass probability requires a k by k matrix, k output slots and at most 2^53 classes",
+    );
+}
+
 #[expect(
     clippy::cast_precision_loss,
-    reason = "C converts the same integer counts to double at these points"
+    reason = "The class count is checked against 2^53 before conversion"
 )]
-pub fn multiclass_probability(k: usize, r: &[Vec<f64>], p: &mut [f64]) {
+fn try_multiclass_probability(k: usize, r: &[Vec<f64>], p: &mut [f64]) -> Option<()> {
+    if k as u128 > (1u128 << 53) {
+        return None;
+    }
+    let r: Vec<&[f64]> = r
+        .get(..k)?
+        .iter()
+        .map(|row| row.get(..k))
+        .collect::<Option<_>>()?;
+    let p = p.get_mut(..k)?;
     let max_iter = 100.max(k);
     let eps = 0.005 / k as f64;
-
-    // Build Q matrix
     let mut q_mat = vec![vec![0.0; k]; k];
     for t in 0..k {
-        q_mat[t][t] = 0.0;
-        for j in 0..t {
-            q_mat[t][t] += r[j][t] * r[j][t];
-            q_mat[t][j] = q_mat[j][t];
+        let (before, after) = q_mat.split_at_mut_checked(t)?;
+        let row = after.first_mut()?;
+        let r_t = r.get(t)?;
+        let mut diagonal = 0.0;
+        for ((slot, previous), r_j) in row.iter_mut().zip(before).zip(&r) {
+            // r rows were checked to have k entries above; t is below k.
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "r.get(..k) and row.get(..k) above establish k entries; t is below k"
+            )]
+            let rjt = r_j[t];
+            diagonal += rjt * rjt;
+            // q_mat was allocated with k entries per row; t is below k.
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "q_mat has k entries per row by construction; t is below k"
+            )]
+            let previous_value = previous[t];
+            *slot = previous_value;
         }
-        for j in (t + 1)..k {
-            q_mat[t][t] += r[j][t] * r[j][t];
-            q_mat[t][j] = -r[j][t] * r[t][j];
+        let next = t.checked_add(1)?;
+        for ((slot, r_j), &rtj) in row
+            .get_mut(next..)?
+            .iter_mut()
+            .zip(r.get(next..)?)
+            .zip(r_t.get(next..)?)
+        {
+            // r rows were checked to have k entries above; t is below k.
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "r.get(..k) and row.get(..k) above establish k entries; t is below k"
+            )]
+            let rjt = r_j[t];
+            diagonal += rjt * rjt;
+            *slot = -rjt * rtj;
         }
+        *row.get_mut(t)? = diagonal;
     }
-
-    for t in 0..k {
-        p[t] = 1.0 / k as f64;
+    for slot in p.iter_mut() {
+        *slot = 1.0 / k as f64;
     }
-
     let mut qp = vec![0.0; k];
-
     for _iter in 0..max_iter {
         let mut p_qp = 0.0;
-        for t in 0..k {
-            qp[t] = 0.0;
-            for j in 0..k {
-                qp[t] += q_mat[t][j] * p[j];
+        for ((qp_t, &p_t), row) in qp.iter_mut().zip(p.iter()).zip(&q_mat) {
+            *qp_t = 0.0;
+            for (&q, &p_j) in row.iter().zip(p.iter()) {
+                *qp_t += q * p_j;
             }
-            p_qp += p[t] * qp[t];
+            p_qp += p_t * *qp_t;
         }
-
         let mut max_error = 0.0;
-        for t in 0..k {
-            let error = (qp[t] - p_qp).abs();
+        for &value in &qp {
+            let error = (value - p_qp).abs();
             if error > max_error {
                 max_error = error;
             }
@@ -231,17 +278,19 @@ pub fn multiclass_probability(k: usize, r: &[Vec<f64>], p: &mut [f64]) {
         if max_error < eps {
             break;
         }
-
-        for t in 0..k {
-            let diff = (-qp[t] + p_qp) / q_mat[t][t];
-            p[t] += diff;
-            p_qp = (p_qp + diff * (diff * q_mat[t][t] + 2.0 * qp[t])) / (1.0 + diff) / (1.0 + diff);
-            for j in 0..k {
-                qp[j] = (qp[j] + diff * q_mat[t][j]) / (1.0 + diff);
-                p[j] /= 1.0 + diff;
+        for (t, row) in q_mat.iter().enumerate() {
+            let qp_t = *qp.get(t)?;
+            let diagonal = *row.get(t)?;
+            let diff = (-qp_t + p_qp) / diagonal;
+            *p.get_mut(t)? += diff;
+            p_qp = (p_qp + diff * (diff * diagonal + 2.0 * qp_t)) / (1.0 + diff) / (1.0 + diff);
+            for ((qp_j, p_j), &q) in qp.iter_mut().zip(p.iter_mut()).zip(row) {
+                *qp_j = (*qp_j + diff * q) / (1.0 + diff);
+                *p_j /= 1.0 + diff;
             }
         }
     }
+    Some(())
 }
 
 // ─── Binary SVC probability via internal CV ──────────────────────────
@@ -254,32 +303,38 @@ fn evaluate_binary_svc_probability_fold(
     perm: &[usize],
     begin: usize,
     end: usize,
-) -> Vec<f64> {
+) -> Option<Vec<f64>> {
     let l = prob.labels.len();
 
     // Build training sub-problem (exclude held-out fold)
-    let mut sub_instances = Vec::with_capacity(l - (end - begin));
-    let mut sub_labels = Vec::with_capacity(l - (end - begin));
-
-    for &pi in &perm[..begin] {
-        sub_instances.push(prob.instances[pi].clone());
-        sub_labels.push(prob.labels[pi]);
+    if prob.instances.len() != l || perm.len() != l {
+        return None;
     }
-    for &pi in &perm[end..l] {
-        sub_instances.push(prob.instances[pi].clone());
-        sub_labels.push(prob.labels[pi]);
+    let held_len = end.checked_sub(begin)?;
+    let sub_len = l.checked_sub(held_len)?;
+    let held = perm.get(begin..end)?;
+    let mut sub_instances = Vec::with_capacity(sub_len);
+    let mut sub_labels = Vec::with_capacity(sub_len);
+
+    for &pi in perm.get(..begin)? {
+        sub_instances.push(prob.instances.get(pi)?.clone());
+        sub_labels.push(*prob.labels.get(pi)?);
+    }
+    for &pi in perm.get(end..l)? {
+        sub_instances.push(prob.instances.get(pi)?.clone());
+        sub_labels.push(*prob.labels.get(pi)?);
     }
 
     // Count classes in training set
     let p_count = sub_labels.iter().filter(|&&y| y > 0.0).count();
-    let n_count = sub_labels.len() - p_count;
+    let n_count = sub_labels.len().checked_sub(p_count)?;
 
     if p_count == 0 && n_count == 0 {
-        vec![0.0; end - begin]
+        Some(vec![0.0; held_len])
     } else if p_count > 0 && n_count == 0 {
-        vec![1.0; end - begin]
+        Some(vec![1.0; held_len])
     } else if p_count == 0 && n_count > 0 {
-        vec![-1.0; end - begin]
+        Some(vec![-1.0; held_len])
     } else {
         let mut subparam = param.clone();
         subparam.probability = false;
@@ -295,12 +350,13 @@ fn evaluate_binary_svc_probability_fold(
         #[cfg(not(feature = "rayon"))]
         let submodel = svm_train(&subprob, &subparam);
 
-        (begin..end)
-            .map(|j| {
+        let sign = f64::from(*submodel.label.first()?);
+        held.iter()
+            .map(|&j| {
                 let mut dv = [0.0];
-                predict_values(&submodel, &prob.instances[perm[j]], &mut dv);
+                predict_values(&submodel, prob.instances.get(j)?, &mut dv);
                 // Sign correction: ensure +1/−1 ordering
-                dv[0] * f64::from(submodel.label[0])
+                Some(dv[0] * sign)
             })
             .collect()
     }
@@ -313,6 +369,9 @@ fn evaluate_binary_svc_probability_fold(
 /// a sigmoid via `sigmoid_train`.
 ///
 /// Matches LIBSVM's `svm_binary_svc_probability`.
+/// # Panics
+///
+/// Panics if row lengths differ, rows exceed 2^53, fold arithmetic overflows, or fold training rejects its inputs.
 #[must_use]
 pub fn svm_binary_svc_probability(
     prob: &SvmProblem,
@@ -320,52 +379,63 @@ pub fn svm_binary_svc_probability(
     cp: f64,
     cn: f64,
 ) -> (f64, f64) {
+    let parameters = try_binary_svc_probability(prob, param, cp, cn);
+    #[expect(
+        clippy::expect_used,
+        reason = "try_binary_svc_probability checks row lengths, fold arithmetic and permutation slices"
+    )]
+    parameters.expect(
+        "binary probability requires consistent row lengths, fold offsets and at most 2^53 rows",
+    )
+}
+
+fn try_binary_svc_probability(
+    prob: &SvmProblem,
+    param: &SvmParameter,
+    cp: f64,
+    cn: f64,
+) -> Option<(f64, f64)> {
     let l = prob.labels.len();
+    if prob.instances.len() != l || l as u128 > (1u128 << 53) {
+        return None;
+    }
     let nr_fold = 5.min(l.max(1));
     let mut perm: Vec<usize> = (0..l).collect();
     let mut dec_values = vec![0.0; l];
-
-    // Random shuffle (Fisher-Yates)
     for i in 0..l {
-        let j = i + c_rand() % (l - i);
+        let remaining = l.checked_sub(i)?;
+        let j = i.checked_add(c_rand().checked_rem(remaining)?)?;
         perm.swap(i, j);
     }
-
+    let bounds: Vec<(usize, usize)> = (0..nr_fold)
+        .map(|fold: usize| {
+            Some((
+                fold.checked_mul(l)?.checked_div(nr_fold)?,
+                fold.checked_add(1)?.checked_mul(l)?.checked_div(nr_fold)?,
+            ))
+        })
+        .collect::<Option<_>>()?;
     #[cfg(feature = "rayon")]
-    {
-        let fold_predictions: Vec<Vec<f64>> = (0..nr_fold)
-            .into_par_iter()
-            .map(|fold| {
-                let begin = fold * l / nr_fold;
-                let end = (fold + 1) * l / nr_fold;
-                evaluate_binary_svc_probability_fold(prob, param, cp, cn, &perm, begin, end)
-            })
-            .collect();
-
-        for (fold, predictions) in fold_predictions.into_iter().enumerate() {
-            let begin = fold * l / nr_fold;
-            let end = (fold + 1) * l / nr_fold;
-            for (j, prediction) in (begin..end).zip(predictions) {
-                dec_values[perm[j]] = prediction;
-            }
-        }
-    }
-
+    let predictions: Vec<Vec<f64>> = bounds
+        .par_iter()
+        .map(|&(begin, end)| {
+            evaluate_binary_svc_probability_fold(prob, param, cp, cn, &perm, begin, end)
+        })
+        .collect::<Option<_>>()?;
     #[cfg(not(feature = "rayon"))]
-    {
-        for fold in 0..nr_fold {
-            let begin = fold * l / nr_fold;
-            let end = (fold + 1) * l / nr_fold;
-            let predictions =
-                evaluate_binary_svc_probability_fold(prob, param, cp, cn, &perm, begin, end);
-
-            for (j, prediction) in (begin..end).zip(predictions) {
-                dec_values[perm[j]] = prediction;
-            }
+    let predictions: Vec<Vec<f64>> = bounds
+        .iter()
+        .map(|&(begin, end)| {
+            evaluate_binary_svc_probability_fold(prob, param, cp, cn, &perm, begin, end)
+        })
+        .collect::<Option<_>>()?;
+    let mut indices = perm.iter();
+    for fold in predictions {
+        for prediction in fold {
+            *dec_values.get_mut(*indices.next()?)? = prediction;
         }
     }
-
-    sigmoid_train(&dec_values, &prob.labels)
+    try_sigmoid_train(&dec_values, &prob.labels)
 }
 
 // ─── One-class probability ───────────────────────────────────────────
@@ -374,6 +444,7 @@ pub fn svm_binary_svc_probability(
 ///
 /// Bin-lookup in precomputed density marks (10 entries). Returns a
 /// probability estimate in (0, 1).
+/// Counts from manually supplied slices above 2^53 round when converted to `f64`.
 ///
 /// Matches LIBSVM's `predict_one_class_probability`.
 #[must_use]
@@ -387,19 +458,20 @@ pub fn predict_one_class_probability(prob_density_marks: &[f64], dec_value: f64)
         return 0.5;
     }
 
-    if dec_value < prob_density_marks[0] {
+    if prob_density_marks
+        .first()
+        .is_some_and(|&first| dec_value < first)
+    {
         return 0.001;
     }
-    if dec_value > prob_density_marks[nr_marks - 1] {
+    if prob_density_marks
+        .last()
+        .is_some_and(|&last| dec_value > last)
+    {
         return 0.999;
     }
 
-    for (i, &mark) in prob_density_marks
-        .iter()
-        .enumerate()
-        .skip(1)
-        .take(nr_marks - 1)
-    {
+    for (i, &mark) in prob_density_marks.iter().enumerate().skip(1) {
         if dec_value < mark {
             return i as f64 / nr_marks as f64;
         }
@@ -415,59 +487,85 @@ pub fn predict_one_class_probability(prob_density_marks: &[f64], dec_value: f64)
 /// negative decision values.
 ///
 /// Matches LIBSVM's `svm_one_class_probability`.
-#[expect(
-    clippy::manual_midpoint,
-    reason = "Keep the C midpoint arithmetic and operation order"
-)]
+/// # Panics
+///
+/// Panics if row lengths differ, mark arithmetic overflows, or prediction rejects the model.
+#[must_use]
 pub fn svm_one_class_probability(prob: &SvmProblem, model: &SvmModel) -> Option<Vec<f64>> {
-    let l = prob.labels.len();
-    let mut dec_values = vec![0.0; l];
+    let marks = try_one_class_probability(prob, model);
+    #[expect(
+        clippy::expect_used,
+        reason = "try_one_class_probability checks row lengths and density mark indices"
+    )]
+    marks.expect(
+        "one-class probability requires consistent row lengths and representable mark indices",
+    )
+}
 
-    for (dv_slot, instance) in dec_values.iter_mut().zip(prob.instances.iter()) {
-        let mut dv = [0.0];
-        predict_values(model, instance, &mut dv);
-        *dv_slot = dv[0];
-    }
-
-    dec_values.sort_by(f64::total_cmp);
-
-    // Find first index with dec_value >= 0  (= neg_counter in C++)
-    let mut neg_counter = 0usize;
-    for (i, &dv) in dec_values.iter().enumerate() {
-        if dv >= 0.0 {
-            neg_counter = i;
-            break;
+fn try_one_class_probability(
+    prob: &SvmProblem,
+    model: &SvmModel,
+) -> Result<Option<Vec<f64>>, &'static str> {
+    (|| {
+        let l = prob.labels.len();
+        if prob.instances.len() != l {
+            return None;
         }
-    }
-    let pos_counter = l - neg_counter;
+        let mut dec_values = vec![0.0; l];
 
-    let nr_marks: usize = 10;
-    let mid = nr_marks / 2; // 5
+        for (dv_slot, instance) in dec_values.iter_mut().zip(prob.instances.iter()) {
+            let mut dv = [0.0];
+            predict_values(model, instance, &mut dv);
+            *dv_slot = dv[0];
+        }
 
-    if neg_counter < mid || pos_counter < mid {
-        crate::info(&format!(
-            "WARNING: number of positive or negative decision values <{mid}; \
+        dec_values.sort_by(f64::total_cmp);
+
+        // Find first index with dec_value >= 0  (= neg_counter in C++)
+        let mut neg_counter = 0usize;
+        for (i, &dv) in dec_values.iter().enumerate() {
+            if dv >= 0.0 {
+                neg_counter = i;
+                break;
+            }
+        }
+        let pos_counter = l.checked_sub(neg_counter)?;
+
+        let nr_marks: usize = 10;
+        let mid = nr_marks / 2; // 5
+
+        if neg_counter < mid || pos_counter < mid {
+            crate::info(&format!(
+                "WARNING: number of positive or negative decision values <{mid}; \
              too few to do a probability estimation.\n"
-        ));
-        return None;
-    }
+            ));
+            return Some(None);
+        }
 
-    let mut tmp_marks = vec![0.0; nr_marks + 1];
+        let mut tmp_marks = vec![0.0; nr_marks.checked_add(1)?];
 
-    for i in 0..mid {
-        tmp_marks[i] = dec_values[i * neg_counter / mid];
-    }
-    tmp_marks[mid] = 0.0;
-    for i in (mid + 1)..=nr_marks {
-        tmp_marks[i] = dec_values[neg_counter - 1 + (i - mid) * pos_counter / mid];
-    }
-
-    let mut marks = vec![0.0; nr_marks];
-    for i in 0..nr_marks {
-        marks[i] = (tmp_marks[i] + tmp_marks[i + 1]) / 2.0;
-    }
-
-    Some(marks)
+        for (i, slot) in tmp_marks.get_mut(..mid)?.iter_mut().enumerate() {
+            *slot = *dec_values.get(i.checked_mul(neg_counter)?.checked_div(mid)?)?;
+        }
+        *tmp_marks.get_mut(mid)? = 0.0;
+        for (i, slot) in tmp_marks.iter_mut().enumerate().skip(mid.checked_add(1)?) {
+            let index = neg_counter.checked_sub(1)?.checked_add(
+                i.checked_sub(mid)?
+                    .checked_mul(pos_counter)?
+                    .checked_div(mid)?,
+            )?;
+            *slot = *dec_values.get(index)?;
+        }
+        let mut marks = vec![0.0; nr_marks];
+        for (slot, pair) in marks.iter_mut().zip(tmp_marks.windows(2)) {
+            let [left, right] = pair else {
+                return None;
+            };
+            *slot = (left + right) / 2.0;
+        }
+        Some(Some(marks))
+    })()
+    .ok_or("inconsistent row lengths or density mark indices")
 }
 
 // ─── SVR probability ─────────────────────────────────────────────────
@@ -480,14 +578,28 @@ pub fn svm_one_class_probability(prob: &SvmProblem, model: &SvmModel) -> Option<
 ///
 /// Matches LIBSVM's `svm_svr_probability`.
 #[must_use]
+/// # Panics
+///
+/// Panics if row lengths differ, rows exceed 2^53, or cross-validation rejects a fold.
+pub fn svm_svr_probability(prob: &SvmProblem, param: &SvmParameter) -> f64 {
+    let scale = try_svr_probability(prob, param);
+    #[expect(
+        clippy::expect_used,
+        reason = "try_svr_probability checks row counts and residual lengths"
+    )]
+    scale.expect("SVR probability requires consistent row lengths and at most 2^53 rows")
+}
+
 #[expect(
     clippy::cast_precision_loss,
-    reason = "C converts the same integer counts to double at these points"
+    reason = "Row counts are checked against 2^53 before conversion"
 )]
-pub fn svm_svr_probability(prob: &SvmProblem, param: &SvmParameter) -> f64 {
+fn try_svr_probability(prob: &SvmProblem, param: &SvmParameter) -> Option<f64> {
     let l = prob.labels.len();
     let nr_fold = 5;
-
+    if prob.instances.len() != l || l as u128 > (1u128 << 53) {
+        return None;
+    }
     let mut newparam = param.clone();
     newparam.probability = false;
     let ymv = crate::cross_validation::svm_cross_validation(prob, &newparam, nr_fold);
@@ -508,19 +620,19 @@ pub fn svm_svr_probability(prob: &SvmProblem, param: &SvmParameter) -> f64 {
     mae = 0.0;
     for &residual in &ymv_residuals {
         if residual.abs() > 5.0 * std_val {
-            count += 1;
+            count = count.checked_add(1)?;
         } else {
             mae += residual.abs();
         }
     }
-    mae /= (l - count) as f64;
+    mae /= l.checked_sub(count)? as f64;
 
     crate::info(&format!(
         "Prob. model for test data: target value = predicted value + z,\n\
          z: Laplace distribution e^(-|z|/sigma)/(2sigma),sigma= {mae:.6}\n"
     ));
 
-    mae
+    Some(mae)
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────
@@ -532,6 +644,66 @@ mod tests {
     use crate::train::svm_train;
     use crate::types::{KernelType, SvmNode, SvmParameter, SvmProblem, SvmType};
     use std::path::PathBuf;
+
+    #[test]
+    fn try_sigmoid_train_rejects_inconsistent_lengths() {
+        assert!(try_sigmoid_train(&[0.0], &[]).is_none());
+        assert!(try_sigmoid_train(&[], &[1.0]).is_none());
+    }
+
+    #[test]
+    fn try_multiclass_probability_rejects_inconsistent_dimensions() {
+        assert!(try_multiclass_probability(2, &[vec![0.0; 2]], &mut [0.0; 2]).is_none());
+        assert!(try_multiclass_probability(2, &[vec![0.0], vec![0.0; 2]], &mut [0.0; 2]).is_none());
+        assert!(try_multiclass_probability(2, &[vec![0.0; 2], vec![0.0; 2]], &mut [0.0]).is_none());
+    }
+
+    #[test]
+    fn evaluate_binary_svc_probability_fold_rejects_inconsistent_rows_and_offsets() {
+        let mut problem = SvmProblem {
+            labels: vec![1.0],
+            instances: Vec::new(),
+        };
+        let param = SvmParameter::default();
+        assert!(
+            evaluate_binary_svc_probability_fold(&problem, &param, 1.0, 1.0, &[0], 0, 1).is_none()
+        );
+        problem.instances.push(Vec::new());
+        assert!(
+            evaluate_binary_svc_probability_fold(&problem, &param, 1.0, 1.0, &[0], 1, 0).is_none()
+        );
+        assert!(
+            evaluate_binary_svc_probability_fold(&problem, &param, 1.0, 1.0, &[0], 0, 2).is_none()
+        );
+    }
+
+    #[test]
+    fn try_binary_svc_probability_rejects_inconsistent_rows() {
+        let problem = SvmProblem {
+            labels: vec![1.0],
+            instances: Vec::new(),
+        };
+        assert!(try_binary_svc_probability(&problem, &SvmParameter::default(), 1.0, 1.0).is_none());
+    }
+
+    #[test]
+    fn try_one_class_probability_rejects_inconsistent_rows() {
+        let problem = SvmProblem {
+            labels: vec![1.0],
+            instances: Vec::new(),
+        };
+        let model = crate::io::load_model(&data_dir().join("heart_scale.model")).unwrap();
+        assert!(try_one_class_probability(&problem, &model).is_err());
+    }
+
+    #[test]
+    fn try_svr_probability_rejects_inconsistent_rows() {
+        let problem = SvmProblem {
+            labels: vec![1.0],
+            instances: Vec::new(),
+        };
+        assert!(try_svr_probability(&problem, &SvmParameter::default()).is_none());
+    }
 
     fn data_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -630,7 +802,8 @@ mod tests {
         let marks = svm_one_class_probability(&prob, &model).expect("expected marks");
         assert_eq!(marks.len(), 10);
         for pair in marks.windows(2) {
-            assert!(pair[0] <= pair[1]);
+            let [left, right] = pair else { unreachable!() };
+            assert!(left <= right);
         }
     }
 
