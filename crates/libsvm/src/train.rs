@@ -430,7 +430,7 @@ pub fn svm_train(problem: &SvmProblem, param: &SvmParameter) -> SvmModel {
     };
     // Both paths check row lengths, counts and class slices before using them.
     #[expect(clippy::expect_used, reason = "private training paths check row lengths, counts and class slices")]
-    model.expect("training requires consistent row lengths and offsets, representable counts, and at most 2^53 solver rows")
+    model.expect("training requires consistent row lengths and offsets, representable counts, and at most 2^53 solver rows. Pass one label per instance and at least one row for classification")
 }
 
 fn train_regression_or_one_class(problem: &SvmProblem, param: &SvmParameter) -> Option<SvmModel> {
@@ -714,9 +714,11 @@ mod tests {
 
     #[test]
     fn train_classification_rejects_mismatched_rows() {
+        // Two instances and one label: the empty-input check does not apply,
+        // so only the length mismatch can reject.
         let problem = SvmProblem {
             labels: vec![1.0],
-            instances: Vec::new(),
+            instances: vec![Vec::new(), Vec::new()],
         };
         assert!(train_classification(&problem, &SvmParameter::default()).is_none());
     }
@@ -796,6 +798,7 @@ mod tests {
         );
 
         // Same rho (within tolerance)
+        // Tolerance 1e-4 is a loose bound. The measured difference to the C model is 1 ULP (5.6e-17) here.
         assert!(
             (*model.rho.first().unwrap() - *ref_model.rho.first().unwrap()).abs() < 1e-4,
             "rho mismatch: Rust={}, C={}",

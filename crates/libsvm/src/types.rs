@@ -261,7 +261,9 @@ pub fn check_parameter(
     }
 
     if problem.labels.len() as u128 > (1u128 << 53) {
-        return Err(SvmError::InvalidParameter("row count exceeds 2^53".into()));
+        return Err(SvmError::InvalidParameter(
+            "row count exceeds 2^53; train on fewer rows".into(),
+        ));
     }
 
     if problem.labels.is_empty() {
@@ -296,10 +298,9 @@ pub fn check_parameter(
         for &y in &problem.labels {
             let label = y as i32;
             if let Some(entry) = class_counts.iter_mut().find(|(l, _)| *l == label) {
-                entry.1 = entry
-                    .1
-                    .checked_add(1)
-                    .ok_or_else(|| SvmError::InvalidParameter("class count overflow".into()))?;
+                entry.1 = entry.1.checked_add(1).ok_or_else(|| {
+                    SvmError::InvalidParameter("class count overflow; train on fewer rows".into())
+                })?;
             } else {
                 class_counts.push((label, 1));
             }
@@ -309,7 +310,9 @@ pub fn check_parameter(
             for &(_, n2) in class_counts.iter().skip(i).skip(1) {
                 if param.nu
                     * n1.checked_add(n2).ok_or_else(|| {
-                        SvmError::InvalidParameter("class count sum overflow".into())
+                        SvmError::InvalidParameter(
+                            "class count sum overflow; train on fewer rows".into(),
+                        )
                     })? as f64
                     / 2.0
                     > n1.min(n2) as f64

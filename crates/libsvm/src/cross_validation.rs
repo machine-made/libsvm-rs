@@ -126,28 +126,57 @@ fn evaluate_fold(
 ///
 /// Panics if row lengths differ, row counts exceed 2^53, fold arithmetic overflows,
 /// internal offsets are inconsistent, or training rejects a fold.
+///
+/// Classification (C-SVC and ν-SVC) also panics when a fold leaves no training rows.
+/// That happens with one fold, and when every class has one row and `nr_fold` is below
+/// the row count. The message names the fold: `fold 2 of 2 has no training rows; use
+/// more folds, up to one per row, or add more rows`.
 pub fn svm_cross_validation(prob: &SvmProblem, param: &SvmParameter, nr_fold: usize) -> Vec<f64> {
     let targets = try_cross_validation(prob, param, nr_fold);
     #[expect(
         clippy::expect_used,
         reason = "try_cross_validation checks problem lengths, fold arithmetic and permutation slices"
     )]
-    targets.expect(
-        "cross-validation requires consistent row lengths, fold offsets and at most 2^53 rows",
-    )
+    let targets = targets.expect(
+        "cross-validation requires consistent row lengths, fold offsets and at most 2^53 rows; pass one label per instance",
+    );
+    // try_cross_validation builds the message with the fold number; this call raises it.
+    #[expect(
+        clippy::panic,
+        reason = "the message names the fold that has no training rows and how to fix it"
+    )]
+    targets.unwrap_or_else(|message| panic!("{message}"))
 }
 
+/// Returns the first fold that holds every row, so classification training gets none.
+///
+/// Regression and one-class training accept an empty set, so they never report a fold.
+fn first_empty_training_fold(
+    param: &SvmParameter,
+    fold_start: &[usize],
+    rows: usize,
+) -> Option<usize> {
+    if !matches!(param.svm_type, SvmType::CSvc | SvmType::NuSvc) {
+        return None;
+    }
+    fold_start
+        .windows(2)
+        .position(|bounds| matches!(bounds, [begin, end] if end.checked_sub(*begin) == Some(rows)))
+}
+
+/// Returns `None` for inconsistent inputs and `Some(Err(message))` for a classification
+/// fold with no training rows. The message is the text of the panic in the caller.
 fn try_cross_validation(
     prob: &SvmProblem,
     param: &SvmParameter,
     mut nr_fold: usize,
-) -> Option<Vec<f64>> {
+) -> Option<Result<Vec<f64>, String>> {
     let l = prob.labels.len();
     if prob.instances.len() != l || l as u128 > (1u128 << 53) {
         return None;
     }
     if l == 0 {
-        return Some(Vec::new());
+        return Some(Ok(Vec::new()));
     }
     if nr_fold == 0 {
         crate::info(
@@ -206,6 +235,12 @@ fn try_cross_validation(
             .collect::<Option<_>>()?;
         fold_starts(&counts)?
     };
+    if let Some(fold) = first_empty_training_fold(param, &fold_start, l) {
+        return Some(Err(format!(
+            "fold {} of {nr_fold} has no training rows; use more folds, up to one per row, or add more rows",
+            fold.checked_add(1)?
+        )));
+    }
     let mut target = vec![0.0; l];
     #[cfg(feature = "rayon")]
     if !param.probability {
@@ -224,7 +259,7 @@ fn try_cross_validation(
                 *target.get_mut(*output.next()?)? = prediction;
             }
         }
-        return Some(target);
+        return Some(Ok(target));
     }
     // Probability training consumes the shared PRNG in fold order.
     for bounds in fold_start.windows(2) {
@@ -236,7 +271,7 @@ fn try_cross_validation(
             *target.get_mut(idx)? = prediction;
         }
     }
-    Some(target)
+    Some(Ok(target))
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────
@@ -274,6 +309,91 @@ mod tests {
             instances: Vec::new(),
         };
         assert!(try_cross_validation(&problem, &SvmParameter::default(), 2).is_none());
+    }
+
+    fn line_problem(labels: &[f64]) -> SvmProblem {
+        SvmProblem {
+            labels: labels.to_vec(),
+            instances: (0u32..)
+                .take(labels.len())
+                .map(|i| {
+                    vec![SvmNode {
+                        index: 1,
+                        value: f64::from(i),
+                    }]
+                })
+                .collect(),
+        }
+    }
+
+    fn linear_param(svm_type: SvmType) -> SvmParameter {
+        SvmParameter {
+            svm_type,
+            kernel_type: KernelType::Linear,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn first_empty_training_fold_finds_the_fold_that_holds_every_row() {
+        let csvc = linear_param(SvmType::CSvc);
+        assert_eq!(first_empty_training_fold(&csvc, &[0, 0, 3], 3), Some(1));
+        assert_eq!(first_empty_training_fold(&csvc, &[0, 3], 3), Some(0));
+        assert_eq!(first_empty_training_fold(&csvc, &[0, 1, 2, 3], 3), None);
+        // Regression and one-class training accept an empty set.
+        let svr = linear_param(SvmType::EpsilonSvr);
+        assert_eq!(first_empty_training_fold(&svr, &[0, 3], 3), None);
+    }
+
+    #[test]
+    fn try_cross_validation_names_a_classification_fold_with_no_training_rows() {
+        // One row per class: stratified assignment puts every row in the last fold.
+        let problem = line_problem(&[1.0, 2.0, 3.0]);
+        for svm_type in [SvmType::CSvc, SvmType::NuSvc] {
+            let result = try_cross_validation(&problem, &linear_param(svm_type), 2);
+            assert_eq!(
+                result,
+                Some(Err("fold 2 of 2 has no training rows; use more folds, up to one per row, or add more rows".to_string()))
+            );
+        }
+        // One fold holds every row, whatever the class sizes.
+        let problem = line_problem(&[1.0, -1.0, 1.0, -1.0]);
+        let result = try_cross_validation(&problem, &linear_param(SvmType::CSvc), 1);
+        assert!(
+            matches!(result, Some(Err(message)) if message.starts_with("fold 1 of 1 has no training rows")),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "fold 2 of 2 has no training rows; use more folds")]
+    fn svm_cross_validation_panics_for_a_classification_fold_with_no_training_rows() {
+        let problem = line_problem(&[1.0, 2.0, 3.0]);
+        let _ = svm_cross_validation(&problem, &linear_param(SvmType::CSvc), 2);
+    }
+
+    #[test]
+    fn cross_validation_keeps_leave_one_out_with_distinct_labels() {
+        // nr_fold equals the row count, so every fold holds one row and trains on two.
+        let problem = line_problem(&[1.0, 2.0, 3.0]);
+        let targets = svm_cross_validation(&problem, &linear_param(SvmType::CSvc), 3);
+        assert_eq!(targets.len(), 3);
+    }
+
+    #[test]
+    fn cross_validation_of_regression_still_returns_for_an_empty_training_fold() {
+        // Earlier versions panicked for classification and returned values for
+        // regression and one-class training on zero rows; those still return values.
+        let problem = line_problem(&[1.0]);
+        // Training on zero rows gives NaN for regression; the test pins that
+        // the value did not change.
+        for svm_type in [SvmType::EpsilonSvr, SvmType::NuSvr] {
+            let targets = svm_cross_validation(&problem, &linear_param(svm_type), 1);
+            assert_eq!(targets.len(), 1);
+            assert!(targets.first().unwrap().is_nan());
+        }
+        let targets = svm_cross_validation(&problem, &linear_param(SvmType::OneClass), 1);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets.first().unwrap().to_bits(), (-1.0_f64).to_bits());
     }
 
     fn data_dir() -> PathBuf {

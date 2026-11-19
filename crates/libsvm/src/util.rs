@@ -184,7 +184,7 @@ pub(crate) fn c_rand() -> usize {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .next()
         })
-        .expect("random state offsets must be below 31")
+        .expect("random state offsets must be below 31; this is a library bug, report it")
 }
 
 /// Deterministic fallback PRNG used where libc rand() parity is not implemented.

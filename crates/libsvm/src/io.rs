@@ -296,9 +296,12 @@ fn read_line_capped(
     // the full allowed content plus CRLF consumes `max_line_len + 2` bytes
     // total, of which one (the \r) would otherwise push us past the cap
     // before the final `\n` arrives.
-    let per_line_raw_cap = (max_line_len as u128)
-        .checked_add(1)
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "line cap overflow"))?;
+    let per_line_raw_cap = (max_line_len as u128).checked_add(1).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "line cap overflow; set a smaller max_line_len",
+        )
+    })?;
 
     let mut buf: Vec<u8> = Vec::new();
     let mut found_newline = false;
@@ -311,21 +314,27 @@ fn read_line_capped(
 
         let take_n = match available.iter().position(|&b| b == b'\n') {
             Some(pos) => pos.checked_add(1).ok_or_else(|| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "line length overflow")
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "line length overflow; shorten the line",
+                )
             })?,
             None => available.len(),
         };
         let chunk = available.get(..take_n).ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "invalid reader buffer length",
+                "invalid reader buffer length; use a BufRead that follows its contract",
             )
         })?;
         let ends_with_newline = chunk.last() == Some(&b'\n');
 
         // Byte cap.
         let new_bytes_read = bytes_read.checked_add(take_n as u64).ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, "byte count overflow")
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "byte count overflow; split the input into smaller files",
+            )
         })?;
         if new_bytes_read > max_bytes {
             return Err(std::io::Error::new(
@@ -339,11 +348,17 @@ fn read_line_capped(
         let prospective_len = (buf.len() as u128)
             .checked_add(take_n as u128)
             .ok_or_else(|| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "line length overflow")
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "line length overflow; shorten the line",
+                )
             })?;
         let content_bytes = if ends_with_newline {
             prospective_len.checked_sub(1).ok_or_else(|| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "line length underflow")
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "line length underflow; this is a library bug, report it",
+                )
             })?
         } else {
             prospective_len
@@ -458,7 +473,7 @@ pub fn load_problem_from_reader_with_options(
             .checked_add(1)
             .ok_or_else(|| SvmError::ParseError {
                 line: line_idx,
-                message: "line count overflow".into(),
+                message: "line count overflow; split the input into smaller files".into(),
             })?;
         let line_num = line_idx;
         let line = raw.trim();
@@ -550,7 +565,10 @@ fn check_precomputed_serials(model: &SvmModel) -> Result<(), SvmError> {
             if let Some(node) = sv.first() {
                 checked_serial(
                     i.checked_add(1).ok_or_else(|| {
-                        SvmError::ModelFormatError("support vector count overflow".into())
+                        SvmError::ModelFormatError(
+                            "support vector count overflow; reduce the number of support vectors"
+                                .into(),
+                        )
                     })?,
                     node.value,
                 )?;
@@ -560,14 +578,31 @@ fn check_precomputed_serials(model: &SvmModel) -> Result<(), SvmError> {
     Ok(())
 }
 
+const SHORT_COEFFICIENT_ROW: &str = "coefficient row is shorter than support vector count; provide one coefficient per support vector";
+
+/// Checks that every coefficient row holds one value per support vector, the
+/// way [`save_model_to_writer`] will read them. The writer ignores extra values
+/// in a longer row, so a longer row passes.
+fn check_coefficient_rows(model: &SvmModel) -> Result<(), SvmError> {
+    if model.sv_coef.iter().any(|row| row.len() < model.sv.len()) {
+        return Err(SvmError::ModelFormatError(SHORT_COEFFICIENT_ROW.into()));
+    }
+    Ok(())
+}
+
 /// Save an SVM model to a file in the original LIBSVM format.
 /// # Errors
 ///
-/// Returns [`SvmError`] when the file cannot be created or written, or when a
-/// precomputed-kernel serial does not fit in an `i32` ([`SvmError::ModelFormatError`]).
+/// Returns [`SvmError`] when the file cannot be created or written.
+/// Returns [`SvmError::ModelFormatError`] when a precomputed-kernel serial does
+/// not fit in an `i32` or a coefficient row is shorter than the support vector count.
+/// The model is checked before the file is created, so a rejected model leaves
+/// an existing file at `path` unchanged.
 pub fn save_model(path: &Path, model: &SvmModel) -> Result<(), SvmError> {
-    // Check every serial before `File::create` truncates the file at `path`.
+    // Check every serial and coefficient row before `File::create` truncates
+    // the file at `path`.
     check_precomputed_serials(model)?;
+    check_coefficient_rows(model)?;
     let file = std::fs::File::create(path)?;
     let writer = std::io::BufWriter::new(file);
     save_model_to_writer(writer, model)
@@ -606,8 +641,9 @@ pub fn save_model(path: &Path, model: &SvmModel) -> Result<(), SvmError> {
 /// ```
 /// # Errors
 ///
-/// Returns [`SvmError`] when the writer cannot accept the model text, or when a
-/// precomputed-kernel serial does not fit in an `i32` ([`SvmError::ModelFormatError`]).
+/// Returns [`SvmError`] when the writer cannot accept the model text.
+/// Returns [`SvmError::ModelFormatError`] when a precomputed-kernel serial does
+/// not fit in an `i32` or a coefficient row is shorter than the support vector count.
 pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), SvmError> {
     let param = &model.param;
 
@@ -695,9 +731,10 @@ pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), S
             write!(
                 w,
                 "{} ",
-                fmt_17g(*row.get(i).ok_or_else(|| SvmError::ModelFormatError(
-                    "coefficient row is shorter than support vector count".into()
-                ))?)
+                fmt_17g(
+                    *row.get(i)
+                        .ok_or_else(|| SvmError::ModelFormatError(SHORT_COEFFICIENT_ROW.into()))?
+                )
             )?;
         }
         // sparse features: %.8g
@@ -708,7 +745,8 @@ pub fn save_model_to_writer(mut w: impl Write, model: &SvmModel) -> Result<(), S
                     "0:{} ",
                     checked_serial(
                         i.checked_add(1).ok_or_else(|| SvmError::ModelFormatError(
-                            "support vector count overflow".into()
+                            "support vector count overflow; reduce the number of support vectors"
+                                .into()
                         ))?,
                         node.value
                     )?
@@ -851,9 +889,11 @@ pub fn load_model_from_reader_with_options(
         )
         .map_err(|e| SvmError::ModelFormatError(e.to_string()))?
         .ok_or_else(|| SvmError::ModelFormatError("unexpected end of file in header".into()))?;
-        line_num = line_num
-            .checked_add(1)
-            .ok_or_else(|| SvmError::ModelFormatError("line count overflow".into()))?;
+        line_num = line_num.checked_add(1).ok_or_else(|| {
+            SvmError::ModelFormatError(
+                "line count overflow; split the input into smaller files".into(),
+            )
+        })?;
         let line = raw.trim().to_string();
         if line.is_empty() {
             continue;
@@ -996,7 +1036,11 @@ pub fn load_model_from_reader_with_options(
     // payload.
     let m = nr_class
         .checked_sub(1)
-        .ok_or_else(|| SvmError::ModelFormatError("nr_class must be positive".into()))?
+        .ok_or_else(|| {
+            SvmError::ModelFormatError(
+                "nr_class must be positive; set nr_class to 2 or more".into(),
+            )
+        })?
         .max(1);
     let mut sv_coef: Vec<Vec<f64>> = (0..m).map(|_| Vec::new()).collect();
     let mut sv: Vec<Vec<SvmNode>> = Vec::new();
@@ -1010,9 +1054,11 @@ pub fn load_model_from_reader_with_options(
         )
         .map_err(|e| SvmError::ModelFormatError(e.to_string()))?
         .ok_or_else(|| SvmError::ModelFormatError("unexpected end of file in SV section".into()))?;
-        line_num = line_num
-            .checked_add(1)
-            .ok_or_else(|| SvmError::ModelFormatError("line count overflow".into()))?;
+        line_num = line_num.checked_add(1).ok_or_else(|| {
+            SvmError::ModelFormatError(
+                "line count overflow; split the input into smaller files".into(),
+            )
+        })?;
         let line = raw.trim();
         if line.is_empty() {
             // Skip blank lines without consuming an SV slot — the header's
@@ -1139,7 +1185,11 @@ pub(crate) fn validate_model(model: &SvmModel) -> Result<(), SvmError> {
     let expected_rows = model
         .nr_class
         .checked_sub(1)
-        .ok_or_else(|| SvmError::ModelFormatError("nr_class must be positive".into()))?
+        .ok_or_else(|| {
+            SvmError::ModelFormatError(
+                "nr_class must be positive; set nr_class to 2 or more".into(),
+            )
+        })?
         .max(1);
     if model.sv_coef.len() != expected_rows {
         return Err(SvmError::ModelFormatError(format!(
@@ -1292,7 +1342,11 @@ fn validate_model_header(
         nr_class
             .checked_sub(1)
             .and_then(|n| nr_class.checked_mul(n))
-            .ok_or_else(|| SvmError::ModelFormatError("class pair count overflow".into()))?
+            .ok_or_else(|| {
+                SvmError::ModelFormatError(
+                    "class pair count overflow; set nr_class to a smaller value".into(),
+                )
+            })?
             / 2
     } else {
         1
@@ -1505,14 +1559,11 @@ mod tests {
         assert_eq!(problem.labels.len(), 270);
         assert_eq!(problem.instances.len(), 270);
         // First instance: +1 label, 12 features (index 11 is missing/sparse)
-        assert_eq!(*problem.labels.first().unwrap(), 1.0);
-        assert_eq!(
-            *problem.instances.first().unwrap().first().unwrap(),
-            SvmNode {
-                index: 1,
-                value: 0.708_333
-            }
-        );
+        // Parsing is exact, so the comparison is on the bits of each `f64`.
+        assert_eq!(problem.labels.first().unwrap().to_bits(), 1.0_f64.to_bits());
+        let node = *problem.instances.first().unwrap().first().unwrap();
+        assert_eq!(node.index, 1);
+        assert_eq!(node.value.to_bits(), 0.708_333_f64.to_bits());
         assert_eq!(problem.instances.first().unwrap().len(), 12);
     }
 
@@ -1537,6 +1588,7 @@ mod tests {
         let problem = load_problem(&path).unwrap();
         assert_eq!(problem.labels.len(), 506);
         // Regression: labels are continuous
+        // Tolerance 1e-10: the file text is the integer 24; the bound only guards against a wrong digit.
         assert!((*problem.labels.first().unwrap() - 24.0).abs() < 1e-10);
     }
 
@@ -1586,6 +1638,7 @@ mod tests {
         assert_eq!(model.sv.len(), 132);
         assert_eq!(model.label, vec![1, -1]);
         assert_eq!(model.n_sv, vec![64, 68]);
+        // Tolerance 1e-15: about 18 ULP at this size; the file stores 17 digits, so it only guards against a wrong digit.
         assert!((*model.rho.first().unwrap() - 0.424_462_051_767_715_73).abs() < 1e-15);
         // sv_coef should have 1 row (nr_class - 1) with 132 entries
         assert_eq!(model.sv_coef.len(), 1);
@@ -2218,6 +2271,54 @@ SV\n\
             before,
             "the file of the first model changed"
         );
+    }
+
+    #[test]
+    fn save_model_keeps_existing_file_when_a_coefficient_row_is_short() {
+        let dir = std::env::temp_dir().join(format!(
+            "libsvm_rs_save_model_short_row_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("model.txt");
+
+        let valid = precomputed_model_with_serial(3.0);
+        save_model(&path, &valid).unwrap();
+        let before = std::fs::read(&path).unwrap();
+
+        // Two support vectors and one coefficient. A writer that checks while
+        // it writes has already written the header and the first row when it
+        // fails.
+        let mut invalid = precomputed_model_with_serial(1.0);
+        invalid.sv.push(vec![SvmNode {
+            index: 0,
+            value: 2.0,
+        }]);
+        invalid.n_sv = vec![2, 0];
+        let result = save_model(&path, &invalid);
+        let after = std::fs::read(&path);
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, SvmError::ModelFormatError(_)),
+            "unexpected error: {err}"
+        );
+        let msg = format!("{err}");
+        assert!(msg.contains("coefficient row"), "unexpected error: {msg}");
+        assert_eq!(
+            after.unwrap(),
+            before,
+            "the file of the first model changed"
+        );
+    }
+
+    #[test]
+    fn check_coefficient_rows_accepts_a_longer_row() {
+        // The writer ignores extra coefficients, so a longer row is not an error.
+        let mut model = precomputed_model_with_serial(1.0);
+        model.sv_coef.first_mut().unwrap().push(0.5);
+        assert!(check_coefficient_rows(&model).is_ok());
     }
 
     #[test]

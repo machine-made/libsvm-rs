@@ -35,7 +35,7 @@ pub fn predict_values(model: &SvmModel, x: &[SvmNode], dec_values: &mut [f64]) -
         clippy::expect_used,
         reason = "try_predict_values checks model slices, pair counts and the decision buffer"
     )]
-    value.expect("prediction requires consistent model arrays and a sufficient decision buffer")
+    value.expect("prediction requires consistent model arrays and a sufficient decision buffer; give dec_values one slot per class pair and match n_sv to the support vectors")
 }
 
 fn try_predict_values(model: &SvmModel, x: &[SvmNode], dec_values: &mut [f64]) -> Option<f64> {
@@ -158,7 +158,7 @@ pub fn predict(model: &SvmModel, x: &[SvmNode]) -> f64 {
         clippy::expect_used,
         reason = "try_predict checks class pair arithmetic and delegates model slice checks"
     )]
-    value.expect("prediction requires consistent model arrays and representable class pair counts")
+    value.expect("prediction requires consistent model arrays and representable class pair counts; load the model with load_model or make nr_class, rho, n_sv and sv_coef agree")
 }
 
 fn pair_count(classes: usize) -> Option<usize> {
@@ -195,7 +195,7 @@ fn try_predict(model: &SvmModel, x: &[SvmNode]) -> Option<f64> {
 pub fn predict_probability(model: &SvmModel, x: &[SvmNode]) -> Option<(f64, Vec<f64>)> {
     let value = try_predict_probability(model, x);
     #[expect(clippy::expect_used, reason = "try_predict_probability checks probability arrays, pair counts and model slices")]
-    value.expect("probability prediction requires consistent model arrays and representable class pair counts")
+    value.expect("probability prediction requires consistent model arrays and representable class pair counts; make prob_a, prob_b, rho and n_sv agree with nr_class")
 }
 
 fn try_predict_probability(
@@ -272,7 +272,7 @@ fn try_predict_probability(
             _ => Some(None),
         }
     })()
-    .ok_or("inconsistent probability model arrays or class pair counts")
+    .ok_or("inconsistent probability model arrays or class pair counts; give prob_a and prob_b one value per class pair")
 }
 
 #[cfg(test)]
@@ -365,6 +365,7 @@ mod tests {
         let label = predict_values(&model, problem.instances.first().unwrap(), &mut dec_values);
 
         // Decision value should be non-zero
+        // Threshold 1e-10: only separates a real decision value from rounding noise near 1e-15.
         assert!(dec_values.first().unwrap().abs() > 1e-10);
         // Label should match what predict returns
         assert_eq!(label, predict(&model, problem.instances.first().unwrap()));

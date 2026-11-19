@@ -43,7 +43,7 @@ pub fn sigmoid_train(dec_values: &[f64], labels: &[f64]) -> (f64, f64) {
         clippy::expect_used,
         reason = "try_sigmoid_train checks equal lengths and the exact f64 count limit"
     )]
-    parameters.expect("sigmoid training requires equal lengths and at most 2^53 rows")
+    parameters.expect("sigmoid training requires equal lengths and at most 2^53 rows; pass one label per decision value")
 }
 
 #[expect(
@@ -195,7 +195,7 @@ pub fn multiclass_probability(k: usize, r: &[Vec<f64>], p: &mut [f64]) {
         reason = "try_multiclass_probability checks matrix dimensions, output length and class count"
     )]
     result.expect(
-        "multiclass probability requires a k by k matrix, k output slots and at most 2^53 classes",
+        "multiclass probability requires a k by k matrix, k output slots and at most 2^53 classes. Pass r with k rows of k values and p with k slots",
     );
 }
 
@@ -385,7 +385,7 @@ pub fn svm_binary_svc_probability(
         reason = "try_binary_svc_probability checks row lengths, fold arithmetic and permutation slices"
     )]
     parameters.expect(
-        "binary probability requires consistent row lengths, fold offsets and at most 2^53 rows",
+        "binary probability requires consistent row lengths, fold offsets and at most 2^53 rows; pass one label per instance",
     )
 }
 
@@ -498,7 +498,7 @@ pub fn svm_one_class_probability(prob: &SvmProblem, model: &SvmModel) -> Option<
         reason = "try_one_class_probability checks row lengths and density mark indices"
     )]
     marks.expect(
-        "one-class probability requires consistent row lengths and representable mark indices",
+        "one-class probability requires consistent row lengths and representable mark indices; pass one label per instance",
     )
 }
 
@@ -565,7 +565,7 @@ fn try_one_class_probability(
         }
         Some(Some(marks))
     })()
-    .ok_or("inconsistent row lengths or density mark indices")
+    .ok_or("inconsistent row lengths or density mark indices; pass one label per instance")
 }
 
 // ─── SVR probability ─────────────────────────────────────────────────
@@ -587,7 +587,7 @@ pub fn svm_svr_probability(prob: &SvmProblem, param: &SvmParameter) -> f64 {
         clippy::expect_used,
         reason = "try_svr_probability checks row counts; svm_cross_validation returns one prediction per row"
     )]
-    scale.expect("SVR probability requires consistent row lengths and at most 2^53 rows")
+    scale.expect("SVR probability requires consistent row lengths and at most 2^53 rows; pass one label per instance")
 }
 
 #[expect(
