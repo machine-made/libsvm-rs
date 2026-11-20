@@ -126,6 +126,11 @@ jobs:
           for i in 1 2 3; do $C -q -s 0 -t 0 -v 3 data/single_member.scale; done
           for i in 1 2 3; do target/release/svm-train-rs -q -s 0 -t 0 -v 3 data/single_member.scale; done
           grep -n 'CFLAGS' .tmp/reference_upstream/libsvm/Makefile | head -3
+          echo "--- build"
+          env | grep -E '^(CC|CXX|CFLAGS|CXXFLAGS|LDFLAGS|CPPFLAGS|MAKEFLAGS|MAKE)=' || echo "no compiler variables"
+          head -20 reference/reference_build.log || true
+          readelf -p .comment $C | head -6 || true
+          echo "fma instructions in C binary: $(objdump -d $C | grep -c -E 'vfmadd|vfnmadd|vfmsub')"
           echo "--- variants"
           echo -n "env -i: "; env -i $C -q -s 0 -t 0 -v 3 data/single_member.scale
           echo -n "LD_BIND_NOW: "; LD_BIND_NOW=1 $C -q -s 0 -t 0 -v 3 data/single_member.scale
