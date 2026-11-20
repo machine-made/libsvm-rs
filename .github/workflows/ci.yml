@@ -109,7 +109,12 @@ jobs:
           DIFF_SCOPE=quick PARITY_REPORT=.tmp/parity_quick.json bash scripts/parity_ulp.sh 2>&1 | tee .tmp/parity_quick.log
       - name: Save first 40 differences
         if: failure()
-        run: awk '/^FAIL / { print; if (++count == 40) exit }' .tmp/parity_quick.log > .tmp/parity_quick_diff.txt
+        run: |
+          awk '/^FAIL / { print; if (++count == 40) exit }' .tmp/parity_quick.log > .tmp/parity_quick_diff.txt
+          # The suite stops the script before the comparison when one case fails, so
+          # keep the suite report too and show the failing rows in the log.
+          cp reference/differential_report.md .tmp/differential_report.md
+          grep -n -i -E 'fail|differ' reference/differential_report.md | head -40 || true
       - name: Upload parity report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
@@ -119,6 +124,7 @@ jobs:
           path: |
             .tmp/parity_quick.json
             .tmp/parity_quick_diff.txt
+            .tmp/differential_report.md
           if-no-files-found: ignore
 
   msrv:
