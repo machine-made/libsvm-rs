@@ -104,9 +104,22 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
       - name: Run quick parity
         shell: bash
+        env:
+          # The runner's g++ targets x86-64-v3 and fuses multiply-adds, which rounds
+          # differently from the plain x86-64 build behind the committed parity numbers.
+          CXX: g++ -march=x86-64 -ffp-contract=off
         run: |
           mkdir -p .tmp
           DIFF_SCOPE=quick PARITY_REPORT=.tmp/parity_quick.json bash scripts/parity_ulp.sh 2>&1 | tee .tmp/parity_quick.log
+      - name: Check that the C reference has no fused multiply-add
+        if: always()
+        shell: bash
+        run: |
+          C=.tmp/reference_upstream/libsvm/svm-train
+          test -x "$C" || exit 0
+          count="$(objdump -d "$C" | grep -c -E 'vfmadd|vfnmadd|vfmsub|vfnmsub' || true)"
+          echo "fused multiply-add instructions in the C reference: ${count}"
+          test "${count}" = 0
       - name: Save first 40 differences
         if: failure()
         run: |
@@ -115,40 +128,6 @@ jobs:
           # keep the suite report too and show the failing rows in the log.
           cp reference/differential_report.md .tmp/differential_report.md
           grep -n -i -E 'fail|differ' reference/differential_report.md | head -40 || true
-      - name: Diagnose the single-member case
-        if: failure()
-        run: |
-          grep -m1 'model name' /proc/cpuinfo || true
-          ldd --version | head -1
-          gcc --version | head -1
-          python3 -c "import ctypes; l=ctypes.CDLL(None); print('rand', [l.rand() for _ in range(4)])"
-          C=.tmp/reference_upstream/libsvm/svm-train
-          for i in 1 2 3; do $C -q -s 0 -t 0 -v 3 data/single_member.scale; done
-          for i in 1 2 3; do target/release/svm-train-rs -q -s 0 -t 0 -v 3 data/single_member.scale; done
-          grep -n 'CFLAGS' .tmp/reference_upstream/libsvm/Makefile | head -3
-          echo "--- build"
-          env | grep -E '^(CC|CXX|CFLAGS|CXXFLAGS|LDFLAGS|CPPFLAGS|MAKEFLAGS|MAKE)=' || echo "no compiler variables"
-          head -20 reference/reference_build.log || true
-          readelf -p .comment $C | head -6 || true
-          echo "fma instructions in C binary: $(objdump -d $C | grep -c -E 'vfmadd|vfnmadd|vfmsub')"
-          g++ -Q --help=target | grep -E '^\s+-march=|^\s+-mfma\s|^\s+-mtune=|^\s+-mavx2\s' || true
-          which -a g++ gcc; ls -la "$(which g++)"
-          g++ -v 2>&1 | grep -E 'Configured with|specs' | cut -c1-400
-          objdump -d $C | grep -m3 -E 'vfmadd' || true
-          echo "fma in a plain compile: $(printf 'double f(double a,double b,double c){return a*b+c;}' | g++ -O3 -x c++ -S -o - - | grep -c vfmadd)"
-          echo "--- variants"
-          echo -n "env -i: "; env -i $C -q -s 0 -t 0 -v 3 data/single_member.scale
-          echo -n "LD_BIND_NOW: "; LD_BIND_NOW=1 $C -q -s 0 -t 0 -v 3 data/single_member.scale
-          echo -n "no ASLR: "; setarch x86_64 -R $C -q -s 0 -t 0 -v 3 data/single_member.scale
-          echo -n "perturb: "; MALLOC_PERTURB_=85 $C -q -s 0 -t 0 -v 3 data/single_member.scale
-          echo -n "hwcaps off: "; GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX512F,-AVX512VL,-AVX512BW,-AVX512DQ,-AVX512CD,-AVX2,-FMA,-BMI2 $C -q -s 0 -t 0 -v 3 data/single_member.scale
-          echo -n "taskset: "; taskset -c 0 $C -q -s 0 -t 0 -v 3 data/single_member.scale
-          python3 - <<'PY'
-          import math
-          for f, a in ((math.exp, 1.0), (math.exp, -0.37), (math.log, 2.0), (math.log, 0.37), (math.tanh, 0.5), (math.sqrt, 2.0)):
-              print(f.__name__, a, float.hex(f(a)))
-          PY
-          file $C || true
       - name: Upload parity report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
