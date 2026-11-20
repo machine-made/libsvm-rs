@@ -135,12 +135,28 @@ fn fmt_8g(v: f64) -> Gfmt {
 }
 
 /// Format a float like C's `%g` (6 significant digits).
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::format_g;
+/// assert_eq!(format_g(1.25), "1.25");
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn format_g(v: f64) -> String {
     format!("{}", Gfmt::new(v, 6))
 }
 
 /// Format a float like C's `%.17g` (17 significant digits).
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::format_17g;
+/// assert_eq!(format_17g(0.1), "0.10000000000000001");
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn format_17g(v: f64) -> String {
     format!("{}", Gfmt::new(v, 17))
@@ -212,14 +228,17 @@ fn str_to_kernel_type(s: &str) -> Option<KernelType> {
 /// larger than the defaults, call [`LoadOptions::trusted_input`] for an
 /// "unlimited" profile, or override specific fields:
 ///
-/// ```ignore
+/// ```
 /// use libsvm_rs::io::{load_problem_from_reader_with_options, LoadOptions};
 ///
 /// let opts = LoadOptions {
 ///     max_bytes: 1 << 30, // 1 GiB for a trusted bulk file
 ///     ..LoadOptions::default()
 /// };
+/// let reader = &b"1 1:0.5\n"[..];
 /// let problem = load_problem_from_reader_with_options(reader, &opts)?;
+/// assert_eq!(problem.labels.len(), 1);
+/// Ok::<(), libsvm_rs::SvmError>(())
 /// ```
 ///
 /// Exceeding any cap returns an [`SvmError::ParseError`] (problem files) or
@@ -263,6 +282,16 @@ impl LoadOptions {
     /// unlimited caps removes the first line of defense against malformed
     /// or adversarial model / problem files. Module-level hard caps still
     /// apply to `nr_class` and `total_sv`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::LoadOptions;
+    /// let options = LoadOptions::trusted_input();
+    /// assert_eq!(options.max_bytes, u64::MAX);
+    /// assert_eq!(options.max_feature_index, i32::MAX);
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[must_use]
     pub fn trusted_input() -> Self {
         Self {
@@ -442,6 +471,15 @@ pub fn load_problem(path: &Path) -> Result<SvmProblem, SvmError> {
 /// # Errors
 ///
 /// Returns [`SvmError`] when the text is invalid.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// let problem = load_problem_from_reader(&b"-1 1:0.5\n1 1:2\n"[..])?;
+/// assert_eq!(problem.labels, vec![-1.0, 1.0]);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub fn load_problem_from_reader(reader: impl BufRead) -> Result<SvmProblem, SvmError> {
     load_problem_from_reader_with_options(reader, &LoadOptions::default())
 }
@@ -454,6 +492,18 @@ pub fn load_problem_from_reader(reader: impl BufRead) -> Result<SvmProblem, SvmE
 /// # Errors
 ///
 /// Returns [`SvmError`] when the text is invalid or a cap is exceeded.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader_with_options;
+/// use libsvm_rs::LoadOptions;
+/// let options = LoadOptions { max_feature_index: 2, ..LoadOptions::default() };
+/// let problem = load_problem_from_reader_with_options(&b"1 2:0.5\n"[..], &options)?;
+/// assert_eq!(problem.instances.len(), 1);
+/// assert!(load_problem_from_reader_with_options(&b"1 3:0.5\n"[..], &options).is_err());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub fn load_problem_from_reader_with_options(
     mut reader: impl BufRead,
     options: &LoadOptions,
@@ -852,6 +902,18 @@ pub fn load_model_from_reader(reader: impl BufRead) -> Result<SvmModel, SvmError
 /// # Errors
 ///
 /// Returns [`SvmError`] when the text is invalid or a cap is exceeded.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_model_from_reader_with_options;
+/// use libsvm_rs::LoadOptions;
+/// let text = b"svm_type epsilon_svr\nkernel_type linear\nnr_class 2\ntotal_sv 1\nrho 0\nSV\n1 1:2\n";
+/// let options = LoadOptions { max_sv: 1, ..LoadOptions::default() };
+/// let model = load_model_from_reader_with_options(&text[..], &options)?;
+/// assert_eq!(model.support_vector_count(), 1);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[expect(clippy::too_many_lines, reason = "Keep the source loop in one place")]
 pub fn load_model_from_reader_with_options(
     mut reader: impl BufRead,

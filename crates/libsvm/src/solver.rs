@@ -65,6 +65,16 @@ fn slot<'a, T>(
 const MAX_EXACT_ROWS: u64 = 9_007_199_254_740_992;
 
 /// Result of the solver.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::solver::SolutionInfo;
+/// let solution = SolutionInfo { obj: -0.5, rho: 0.0, upper_bound_p: 1.0,
+///                               upper_bound_n: 1.0, r: 0.0 };
+/// assert_eq!(solution.rho.to_bits(), 0.0_f64.to_bits());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct SolutionInfo {
     /// Final dual objective value reported like LIBSVM's `SolutionInfo::obj`.
@@ -88,6 +98,16 @@ enum AlphaStatus {
 }
 
 /// Standard vs Nu solver variant.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::solver::SolverVariant;
+/// let variant = SolverVariant::Standard;
+/// let uses_nu = match variant { SolverVariant::Standard => false, SolverVariant::Nu => true };
+/// assert!(!uses_nu);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SolverVariant {
     /// Standard LIBSVM `Solver` variant for C-SVC, one-class SVM, and ε-SVR.
@@ -97,6 +117,24 @@ pub enum SolverVariant {
 }
 
 /// SMO solver.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::solver::{Solver, SolverVariant};
+/// use libsvm_rs::qmatrix::SvcQ;
+/// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+/// let rows = vec![vec![SvmNode { index: 1, value: -1.0 }],
+///                 vec![SvmNode { index: 1, value: 1.0 }]];
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let q = SvcQ::new(&rows, &param, &[-1, 1]);
+/// let mut alpha = [0.0; 2];
+/// let solution = Solver::solve(SolverVariant::Standard, 2, Box::new(q),
+///     &[-1.0, -1.0], &[-1, 1], &mut alpha, 1.0, 1.0, 0.001, true);
+/// assert!(solution.rho.is_finite());
+/// assert!(alpha.iter().all(|a| (a - 0.5).abs() < 1e-12));
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub struct Solver<'a> {
     l: usize,
     active_size: usize,
@@ -140,6 +178,24 @@ impl<'a> Solver<'a> {
     /// The call panics when `alpha_` does not cover an active-set index.
     /// The call panics when a Q row is shorter than the requested length.
     /// The call panics when a Q column index is outside the stored column count.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::solver::{Solver, SolverVariant};
+    /// use libsvm_rs::qmatrix::SvcQ;
+    /// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+    /// let rows = vec![vec![SvmNode { index: 1, value: -1.0 }],
+    ///                 vec![SvmNode { index: 1, value: 1.0 }]];
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let q = SvcQ::new(&rows, &param, &[-1, 1]);
+    /// let mut alpha = [0.0; 2];
+    /// let solution = Solver::solve(SolverVariant::Standard, 2, Box::new(q),
+    ///     &[-1.0, -1.0], &[-1, 1], &mut alpha, 1.0, 1.0, 0.001, true);
+    /// assert!(solution.rho.is_finite());
+    /// assert!(alpha.iter().all(|a| (a - 0.5).abs() < 1e-12));
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[expect(
         clippy::too_many_arguments,
         reason = "Keep the C solver arguments in one call"

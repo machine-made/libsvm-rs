@@ -10,13 +10,76 @@
 //!
 //! ## LIBSVM parity
 //!
-//! The crate targets numerical equivalence and model-file compatibility with
-//! upstream LIBSVM rather than bit-for-bit identity. Core counterparts include
+//! The committed comparison with LIBSVM reports zero ULP distance for the
+//! compared values, at the printed precisions described in the contract below.
+//! See [the parity report](https://github.com/machine-made/libsvm-rs/blob/main/parity/parity_ulp.json).
+//! Core counterparts include
 //! [`train::svm_train`] for `svm_train`,
 //! [`cross_validation::svm_cross_validation`] for `svm_cross_validation`,
 //! [`predict::predict_values`] / [`predict::predict`] /
 //! [`predict::predict_probability`] for the prediction APIs, and
 //! [`io::save_model`] / [`io::load_model`] for LIBSVM model persistence.
+//!
+//! # Contract
+//!
+//! Class: production kernel
+//!
+//! ## Purpose
+//!
+//! Train and use LIBSVM models through owned Rust data, without an FFI boundary.
+//! The crate also provides cross-validation, probability estimates, and LIBSVM text I/O.
+//! See the [migration guide](https://github.com/machine-made/libsvm-rs/blob/main/docs/MIGRATION.md) for the C API mapping.
+//!
+//! ## Invariants
+//!
+//! Supply one label per instance, with sparse feature indices in ascending order.
+//! Classification labels are integers; class grouping converts them to `i32`, as LIBSVM does.
+//! Call [`check_parameter`] before training to check parameters, problem lengths, and class feasibility.
+//! This check does not validate every sparse feature row; the text loaders check their format.
+//! Training and prediction require consistent model arrays and buffers, as their panic sections describe.
+//! Precomputed kernels require the sample serial and row layout described by [`check_parameter`] and [`io::load_model`].
+//! Public structs and enums stay exhaustive; adding a public field or enum variant requires a major-version change.
+//!
+//! ## Error model
+//!
+//! Loaders, model writers, the parameter builder, and parameter validation return `Result` with [`SvmError`].
+//! Training returns [`SvmModel`]; prediction returns values, with `Option` for probability metadata that may be absent.
+//! These entry points do not convert every invalid caller value into `Err`.
+//! Unequal label and instance lengths panic during training, with a message.
+//! Prediction panics if a hand-built model has inconsistent arrays, including support-vector counts that disagree with its vectors.
+//! Other caller requirements and panic conditions appear on each entry point.
+//!
+//! ## Determinism class
+//!
+//! With fixed inputs and the same random stream state, results are bit-identical across runs and thread counts on one CPU type.
+//! Cross-validation and probability calibration consume a shared random stream; successive calls need not repeat their results.
+//! Compare fresh processes with the same call order when checking randomised paths.
+//! The default build runs serially.
+//! With `rayon`, fold assignment stays serial and each ordinary cross-validation fold trains on an independent worker.
+//! Probability-enabled outer folds stay serial to preserve random draw order; binary calibration folds can run in parallel.
+//! Tied classification votes choose the first label in the model's class order.
+//! Shuffling a class with one member still draws one random number, as LIBSVM does.
+//!
+//! ## Unsafe leaves
+//!
+//! There are no unsafe leaves in this crate; unsafe code is forbidden here and denied by the workspace.
+//!
+//! ## Features
+//!
+//! `rayon` enables parallel cross-validation and binary probability calibration folds.
+//! `serde` enables model and parameter serialization; model deserialization checks structure.
+//! Both features are off by default.
+//! See the feature flags below for memory use and interchange details.
+//!
+//! ## Not proven
+//!
+//! The committed [parity report](https://github.com/machine-made/libsvm-rs/blob/main/parity/parity_ulp.json) measures Linux x86-64 against C LIBSVM 3.37.
+//! Its summary records 4766 fields, 1017174 values, `max_ulp` 0, and failures 0.
+//! Probabilities are compared at `%g`; support-vector rows are compared at `%.8g`.
+//! Other compared floating values use `%.17g`.
+//! Zero ULP distance applies to the compared printed values, including those rounded by these formats.
+//! This report does not establish bit identity on macOS, Windows, other CPUs, or inputs outside that comparison.
+//! The thread test checks fixed problems and thread counts; it does not prove every input or scheduling pattern.
 //!
 //! ## Quick example
 //!
@@ -99,6 +162,15 @@ static SUPPRESS_INFO_DEPTH: AtomicUsize = AtomicUsize::new(0);
 
 /// Enable or disable quiet mode. When quiet, solver diagnostic messages
 /// are suppressed (equivalent to LIBSVM's `-q` flag).
+///
+/// # Example
+///
+/// ```
+/// libsvm_rs::set_quiet(true);
+/// // Solver progress messages are now suppressed.
+/// libsvm_rs::set_quiet(false);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub fn set_quiet(quiet: bool) {
     QUIET_MODE.store(quiet, Ordering::Relaxed);
 }

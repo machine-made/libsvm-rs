@@ -8,6 +8,15 @@
 //! [`SvmError::InvalidParameter`].
 
 /// Errors returned by libsvm-rs operations.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::SvmError;
+/// let error = SvmError::InvalidParameter("C must be positive".into());
+/// assert_eq!(error.to_string(), "invalid parameter: C must be positive");
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[derive(Debug, thiserror::Error)]
 pub enum SvmError {
     /// An SVM parameter failed validation.

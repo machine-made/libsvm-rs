@@ -12,6 +12,14 @@ use crate::types::{KernelType, SvmNode, SvmParameter};
 ///
 /// For negative `times`, returns 1.0 (same as the C code, which only
 /// iterates while `t > 0`).
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::kernel::powi;
+/// assert_eq!(powi(2.0, 3).to_bits(), 8.0_f64.to_bits());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[inline]
 #[must_use]
 pub fn powi(base: f64, times: i32) -> f64 {
@@ -36,6 +44,16 @@ pub fn powi(base: f64, times: i32) -> f64 {
 /// This is the merge-based O(n+m) algorithm from LIBSVM.
 /// The loop checks each cursor before it indexes.
 /// The call does not panic.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+/// let x = [SvmNode { index: 1, value: 2.0 }];
+/// let y = [SvmNode { index: 1, value: 3.0 }];
+/// assert_eq!(libsvm_rs::kernel::dot(&x, &y).to_bits(), 6.0_f64.to_bits());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[inline]
 #[must_use]
 #[expect(
@@ -127,6 +145,17 @@ fn sparse_sq_dist(x: &[SvmNode], y: &[SvmNode]) -> f64 {
 ///
 /// This is the standalone version used during prediction. Matches
 /// LIBSVM's `Kernel::k_function`.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+/// let x = [SvmNode { index: 1, value: 2.0 }];
+/// let y = [SvmNode { index: 1, value: 3.0 }];
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// assert_eq!(libsvm_rs::kernel::k_function(&x, &y, &param).to_bits(), 6.0_f64.to_bits());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 #[expect(
     clippy::cast_possible_truncation,
@@ -170,6 +199,20 @@ pub fn k_function(x: &[SvmNode], y: &[SvmNode], param: &SvmParameter) -> f64 {
 /// The `kernel_function` method pointer pattern from C++ is replaced
 /// by a match on `kernel_type` — the branch predictor handles this
 /// efficiently since the type doesn't change during training.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+/// let x = [SvmNode { index: 1, value: 2.0 }];
+/// let y = [SvmNode { index: 1, value: 3.0 }];
+/// use libsvm_rs::kernel::Kernel;
+/// let rows = vec![x.to_vec(), y.to_vec()];
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let mut kernel = Kernel::new(&rows, &param);
+/// assert_eq!(kernel.evaluate(0, 1).to_bits(), 6.0_f64.to_bits());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[expect(clippy::struct_field_names, reason = "Keep the C kernel field names")]
 pub struct Kernel<'a> {
     x: Vec<&'a [SvmNode]>,
@@ -182,6 +225,20 @@ pub struct Kernel<'a> {
 
 impl<'a> Kernel<'a> {
     /// Create a new kernel evaluator for the given dataset and parameters.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+    /// let x = [SvmNode { index: 1, value: 2.0 }];
+    /// let y = [SvmNode { index: 1, value: 3.0 }];
+    /// use libsvm_rs::kernel::Kernel;
+    /// let rows = vec![x.to_vec(), y.to_vec()];
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let mut kernel = Kernel::new(&rows, &param);
+    /// assert_eq!(kernel.evaluate(0, 1).to_bits(), 6.0_f64.to_bits());
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     pub fn new(x: &'a [Vec<SvmNode>], param: &SvmParameter) -> Self {
         let x_refs: Vec<&'a [SvmNode]> = x.iter().map(std::vec::Vec::as_slice).collect();
         let x_square = if param.kernel_type == KernelType::Rbf {
@@ -205,6 +262,20 @@ impl<'a> Kernel<'a> {
     /// # Panics
     ///
     /// The call panics when `i` or `j` is outside the training set.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+    /// let x = [SvmNode { index: 1, value: 2.0 }];
+    /// let y = [SvmNode { index: 1, value: 3.0 }];
+    /// use libsvm_rs::kernel::Kernel;
+    /// let rows = vec![x.to_vec(), y.to_vec()];
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let mut kernel = Kernel::new(&rows, &param);
+    /// assert_eq!(kernel.evaluate(0, 1).to_bits(), 6.0_f64.to_bits());
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[inline]
     #[must_use]
     #[expect(
@@ -285,6 +356,21 @@ impl<'a> Kernel<'a> {
     /// # Panics
     ///
     /// The call panics when `i` or `j` is outside the training set.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+    /// let x = [SvmNode { index: 1, value: 2.0 }];
+    /// let y = [SvmNode { index: 1, value: 3.0 }];
+    /// use libsvm_rs::kernel::Kernel;
+    /// let rows = vec![x.to_vec(), y.to_vec()];
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let mut kernel = Kernel::new(&rows, &param);
+    /// kernel.swap_index(0, 1);
+    /// assert_eq!(kernel.evaluate(0, 0).to_bits(), 9.0_f64.to_bits());
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     pub fn swap_index(&mut self, i: usize, j: usize) {
         self.x.swap(i, j);
         if let Some(ref mut sq) = self.x_square {

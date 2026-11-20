@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The crate contract records input rules, errors, determinism, features, and parity limits; a thread test compares training, prediction, and cross-validation bits
 - `CONTRIBUTING.md` records the pull-request gates and the parity command
 - `scripts/parity_ulp.sh` compared the printed outputs of the C tool and the Rust tool. On Linux x86-64, against LIBSVM 3.37, every compared value matched. The script compared header values, coefficients and predictions at full precision (`%.17g`). The script compared probabilities at the printed precision (`%g`). The script compared support-vector rows at the printed precision (`%.8g`).
 
 ### Improved
 
+- Public API examples now compile and cover parameter building, model access, kernels, solvers, probability, and memory-backed I/O
 - Training, prediction, probability, model I/O, cross-validation, utilities, and types lost their module-wide indexing and integer arithmetic exemptions. Private code checks lengths before hot loops. Public signatures stay unchanged.
 - The kernel, the cache, and the Q matrix lost their module-wide exemptions for indexing and for integer arithmetic. Checked access replaced raw indexing in private code. Each remaining raw access kept one single-site exception. The exception named the guarantee.
 - The solver lost its module-wide exemptions for indexing and for integer arithmetic. Private code checks vector lengths before hot loops and swaps. The remaining indexing exceptions name the bounds that protect each access. A solve with more than 2^53 rows panics with a message that names the limit, so the free-row counts convert exactly to `f64`.

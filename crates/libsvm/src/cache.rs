@@ -28,6 +28,20 @@ struct LruNode {
 /// The LRU list is a circular doubly-linked list using array indices.
 /// Index `l` is the sentinel head node. All operations (insert, remove,
 /// evict) are O(1).
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::cache::Cache;
+/// let mut cache = Cache::new(2, 1024);
+/// let (row, start) = cache.get_data(0, 2);
+/// assert_eq!(start, 0);
+/// row.fill(1.0);
+/// let (row, start) = cache.get_data(0, 2);
+/// assert_eq!(start, 2);
+/// assert!(row.iter().all(|value| value.to_bits() == 1.0_f32.to_bits()));
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub struct Cache {
     /// Number of data items (rows in the Q matrix).
     l: usize,
@@ -44,6 +58,20 @@ pub struct Cache {
 
 impl Cache {
     /// Create a new cache for `l` data items with `size_bytes` of memory.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::cache::Cache;
+    /// let mut cache = Cache::new(2, 1024);
+    /// let (row, start) = cache.get_data(0, 2);
+    /// assert_eq!(start, 0);
+    /// row.fill(1.0);
+    /// let (row, start) = cache.get_data(0, 2);
+    /// assert_eq!(start, 2);
+    /// assert!(row.iter().all(|value| value.to_bits() == 1.0_f32.to_bits()));
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[must_use]
     #[expect(
         clippy::arithmetic_side_effects,
@@ -129,6 +157,20 @@ impl Cache {
     /// # Panics
     ///
     /// The call panics when `index` is outside the row count.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::cache::Cache;
+    /// let mut cache = Cache::new(2, 1024);
+    /// let (row, start) = cache.get_data(0, 2);
+    /// assert_eq!(start, 0);
+    /// row.fill(1.0);
+    /// let (row, start) = cache.get_data(0, 2);
+    /// assert_eq!(start, 2);
+    /// assert!(row.iter().all(|value| value.to_bits() == 1.0_f32.to_bits()));
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[expect(
         clippy::indexing_slicing,
         reason = "the caller passes a row index inside the row count, and listed nodes use the same range"
@@ -181,6 +223,18 @@ impl Cache {
     /// # Panics
     ///
     /// The call panics when `i` or `j` is outside the row count.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::cache::Cache;
+    /// let mut cache = Cache::new(2, 1024);
+    /// cache.get_data(0, 2).0.fill(1.0);
+    /// cache.get_data(1, 2).0.fill(2.0);
+    /// cache.swap_index(0, 1);
+    /// assert!(cache.get_data(0, 2).0.iter().all(|value| value.to_bits() == 2.0_f32.to_bits()));
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[expect(
         clippy::indexing_slicing,
         reason = "the caller passes row indices inside the row count, and listed nodes use the same range"

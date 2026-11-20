@@ -29,6 +29,22 @@ use crate::types::{SvmModel, SvmNode, SvmType};
 /// # Panics
 ///
 /// Panics if model arrays are inconsistent, class counts overflow, or the decision buffer is too short.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let model = libsvm_rs::train::svm_train(&problem, &param);
+/// let mut decisions = [0.0];
+/// let sample = [libsvm_rs::SvmNode { index: 1, value: 1.5 }];
+/// let label = libsvm_rs::predict::predict_values(&model, &sample, &mut decisions);
+/// assert_eq!(label.to_bits(), 1.0_f64.to_bits());
+/// assert!(decisions.iter().all(|value| value.is_finite()));
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub fn predict_values(model: &SvmModel, x: &[SvmNode], dec_values: &mut [f64]) -> f64 {
     let value = try_predict_values(model, x, dec_values);
     #[expect(
@@ -194,6 +210,26 @@ fn try_predict(model: &SvmModel, x: &[SvmNode]) -> Option<f64> {
 /// # Panics
 ///
 /// Panics if a probability model has inconsistent arrays or class pair counts overflow.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter {
+///     kernel_type: KernelType::Linear,
+///     probability: true,
+///     ..Default::default()
+/// };
+/// let model = libsvm_rs::train::svm_train(&problem, &param);
+/// let sample = [libsvm_rs::SvmNode { index: 1, value: 1.5 }];
+/// let (_, probabilities) = libsvm_rs::predict::predict_probability(&model, &sample)
+///     .ok_or(libsvm_rs::SvmError::InvalidParameter("missing probabilities".into()))?;
+/// assert_eq!(probabilities.len(), 2);
+/// assert!(probabilities.iter().all(|p| (0.0..=1.0).contains(p)));
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn predict_probability(model: &SvmModel, x: &[SvmNode]) -> Option<(f64, Vec<f64>)> {
     let value = try_predict_probability(model, x);
