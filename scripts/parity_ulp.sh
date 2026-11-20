@@ -8,6 +8,15 @@
 
 set -euo pipefail
 
+DIFF_SCOPE="${DIFF_SCOPE-full}"
+case "${DIFF_SCOPE}" in
+    quick|full) ;;
+    *)
+        printf 'DIFF_SCOPE must be quick or full; got: %s\n' "${DIFF_SCOPE}" >&2
+        exit 2
+        ;;
+esac
+
 # macOS realpath has no -m.
 # Python realpath resolves the path on Linux and on macOS.
 ROOT="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$(dirname "$0")/..")"
@@ -18,7 +27,7 @@ SUITE=".tmp/differential_suite"
 EXPORT="scripts/parity_export.py"
 COMPARE="scripts/parity_compare.py"
 CONFIG="parity/tolerances.json"
-REPORT="parity/parity_ulp.json"
+REPORT="${PARITY_REPORT:-parity/parity_ulp.json}"
 REF="${SUITE}/parity_c.json"
 CAND="${SUITE}/parity_r.json"
 
@@ -28,10 +37,10 @@ mkdir -p "${SUITE}"
 # env sets the limits on the suite process.
 # jobscope runs that process when the command is installed.
 if command -v jobscope >/dev/null 2>&1; then
-    jobscope env RAYON_NUM_THREADS=2 CARGO_BUILD_JOBS=2 DIFF_SCOPE=full \
+    jobscope env RAYON_NUM_THREADS=2 CARGO_BUILD_JOBS=2 DIFF_SCOPE="${DIFF_SCOPE}" \
         python3 scripts/run_differential_suite.py
 else
-    env RAYON_NUM_THREADS=2 CARGO_BUILD_JOBS=2 DIFF_SCOPE=full \
+    env RAYON_NUM_THREADS=2 CARGO_BUILD_JOBS=2 DIFF_SCOPE="${DIFF_SCOPE}" \
         python3 scripts/run_differential_suite.py
 fi
 
