@@ -115,6 +115,18 @@ jobs:
           # keep the suite report too and show the failing rows in the log.
           cp reference/differential_report.md .tmp/differential_report.md
           grep -n -i -E 'fail|differ' reference/differential_report.md | head -40 || true
+      - name: Diagnose the single-member case
+        if: failure()
+        run: |
+          grep -m1 'model name' /proc/cpuinfo || true
+          ldd --version | head -1
+          gcc --version | head -1
+          python3 -c "import ctypes; l=ctypes.CDLL(None); print('rand', [l.rand() for _ in range(4)])"
+          C=.tmp/reference_upstream/libsvm/svm-train
+          for i in 1 2 3; do $C -q -s 0 -t 0 -v 3 data/single_member.scale; done
+          for i in 1 2 3; do target/release/svm-train-rs -q -s 0 -t 0 -v 3 data/single_member.scale; done
+          grep -n 'CFLAGS' .tmp/reference_upstream/libsvm/Makefile | head -3
+          file $C || true
       - name: Upload parity report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
