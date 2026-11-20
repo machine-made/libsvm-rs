@@ -31,6 +31,8 @@ cargo build --release --locked -p svm-train-rs -p svm-predict-rs
 bash scripts/compare_references.sh
 ```
 
+Run quick parity with `DIFF_SCOPE=quick PARITY_REPORT=.tmp/parity_quick.json bash scripts/parity_ulp.sh`; the full 250-case x3 command is listed below.
+
 ## Port code
 
 This project is a Rust port of LIBSVM. Before you add or change port code:
