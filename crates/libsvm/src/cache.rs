@@ -516,3 +516,110 @@ mod tests {
         assert_eq!(start, 0);
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::{Cache, LruNode, NONE, Qfloat};
+
+    // Arbitrary row counts cannot be allocated in a bounded proof.
+    // Keep this expression identical to Cache::new and check it against wider arithmetic.
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn prove_element_budget_saturates() {
+        let l: usize = kani::any();
+        let size_bytes: usize = kani::any();
+        let qfloat_bytes = std::mem::size_of::<Qfloat>();
+        let node_bytes = std::mem::size_of::<LruNode>();
+        let header_size = l.saturating_mul(node_bytes) / qfloat_bytes;
+        let floor = l.saturating_mul(2).saturating_add(header_size);
+        let size = (size_bytes / qfloat_bytes)
+            .max(floor)
+            .saturating_sub(header_size);
+
+        let cap = usize::MAX as u128;
+        let wide_header = ((l as u128) * (node_bytes as u128)).min(cap) / (qfloat_bytes as u128);
+        let wide_floor = ((l as u128) * 2 + wide_header).min(cap);
+        let wide_budget =
+            ((size_bytes as u128) / (qfloat_bytes as u128)).max(wide_floor) - wide_header;
+        assert_eq!(size as u128, wide_budget);
+        assert!(size.checked_add(header_size).is_some());
+
+        // Link the arithmetic proof to the constructor for small allocations.
+        let small_l: usize = kani::any();
+        kani::assume(small_l <= 3);
+        let cache = Cache::new(small_l, size_bytes);
+        let small_header = small_l * node_bytes / qfloat_bytes;
+        assert_eq!(
+            cache.size,
+            (size_bytes / qfloat_bytes).max(small_l * 2 + small_header) - small_header
+        );
+    }
+
+    // Three rows and the sentinel node at index 3. Fixed sizes and bounded loops
+    // keep the proof small: symbolic row counts and iterator chains over the node
+    // vector did not finish within five minutes.
+    fn assert_circular(cache: &Cache) {
+        for i in 0..=3 {
+            let node = &cache.nodes[i];
+            if node.prev == NONE {
+                assert_eq!(node.next, NONE);
+            } else {
+                assert!(node.prev <= 3 && node.next <= 3);
+                assert_eq!(cache.nodes[node.prev].next, i);
+                assert_eq!(cache.nodes[node.next].prev, i);
+            }
+        }
+        // The walk from the sentinel returns to it within four steps.
+        let mut cursor = cache.nodes[3].next;
+        for _ in 0..4 {
+            if cursor == 3 {
+                break;
+            }
+            assert!(cursor < 3);
+            cursor = cache.nodes[cursor].next;
+        }
+        assert_eq!(cursor, 3);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn prove_lru_insert_delete_is_circular() {
+        let index: usize = kani::any();
+        let in0: bool = kani::any();
+        let in1: bool = kani::any();
+        let in2: bool = kani::any();
+        kani::assume(index < 3);
+        let mut cache = Cache::new(3, 0);
+        if in0 && index != 0 {
+            cache.lru_insert(0);
+        }
+        if in1 && index != 1 {
+            cache.lru_insert(1);
+        }
+        if in2 && index != 2 {
+            cache.lru_insert(2);
+        }
+        assert_circular(&cache);
+        cache.lru_insert(index);
+        assert_circular(&cache);
+        cache.lru_delete(index);
+        assert_circular(&cache);
+        assert!(!cache.in_lru(index));
+    }
+
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn prove_get_data_covers_request() {
+        // The row count and the request length are fixed (2 and 3): symbolic
+        // sizes through vec! and Vec::resize did not finish within five minutes.
+        // The two rows are symbolic, so the proof covers growth from empty,
+        // reuse of the same row and eviction.
+        let l = 2;
+        let first: usize = kani::any();
+        let second: usize = kani::any();
+        kani::assume(first < l && second < l);
+        let mut cache = Cache::new(l, 0);
+        assert!(cache.get_data(first, 3).0.len() >= 3);
+        assert!(cache.get_data(second, 3).0.len() >= 3);
+    }
+}
