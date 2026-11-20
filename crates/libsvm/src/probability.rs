@@ -37,6 +37,16 @@ use rayon::prelude::*;
 /// # Panics
 ///
 /// Panics if lengths differ or the row count exceeds 2^53.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::probability::{sigmoid_predict, sigmoid_train};
+/// let (a, b) = sigmoid_train(&[-2.0, -1.0, 1.0, 2.0], &[-1.0, -1.0, 1.0, 1.0]);
+/// assert!(a.is_finite() && b.is_finite());
+/// assert!(sigmoid_predict(2.0, a, b) > sigmoid_predict(-2.0, a, b));
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub fn sigmoid_train(dec_values: &[f64], labels: &[f64]) -> (f64, f64) {
     let parameters = try_sigmoid_train(dec_values, labels);
     #[expect(
@@ -166,6 +176,14 @@ fn try_sigmoid_train(dec_values: &[f64], labels: &[f64]) -> Option<(f64, f64)> {
 ///
 /// Returns P(y=1|f) = 1/(1+exp(A*f+B)), branching on sign of A*f+B
 /// to avoid overflow. Matches LIBSVM's `sigmoid_predict`.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::probability::sigmoid_predict;
+/// assert_eq!(sigmoid_predict(0.0, -1.0, 0.0).to_bits(), 0.5_f64.to_bits());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn sigmoid_predict(decision_value: f64, a: f64, b: f64) -> f64 {
     let f_apb = decision_value * a + b;
@@ -188,6 +206,17 @@ pub fn sigmoid_predict(decision_value: f64, a: f64, b: f64) -> f64 {
 /// # Panics
 ///
 /// Panics if the matrix or output is smaller than `k`, or `k` exceeds 2^53.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::probability::multiclass_probability;
+/// let pairwise = vec![vec![0.0, 0.5], vec![0.5, 0.0]];
+/// let mut probabilities = [0.0; 2];
+/// multiclass_probability(2, &pairwise, &mut probabilities);
+/// assert!(probabilities.iter().all(|p| (p - 0.5).abs() < 1e-12));
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub fn multiclass_probability(k: usize, r: &[Vec<f64>], p: &mut [f64]) {
     let result = try_multiclass_probability(k, r, p);
     #[expect(
@@ -372,6 +401,18 @@ fn evaluate_binary_svc_probability_fold(
 /// # Panics
 ///
 /// Panics if row lengths differ, rows exceed 2^53, fold arithmetic overflows, or fold training rejects its inputs.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let (a, b) = libsvm_rs::probability::svm_binary_svc_probability(&problem, &param, 1.0, 1.0);
+/// assert!(a.is_finite() && b.is_finite());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn svm_binary_svc_probability(
     prob: &SvmProblem,
@@ -447,6 +488,16 @@ fn try_binary_svc_probability(
 /// Counts from manually supplied slices above 2^53 round when converted to `f64`.
 ///
 /// Matches LIBSVM's `predict_one_class_probability`.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::probability::predict_one_class_probability;
+/// let marks = [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9];
+/// let probability = predict_one_class_probability(&marks, 0.0);
+/// assert_eq!(probability.to_bits(), 0.5_f64.to_bits());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 #[expect(
     clippy::cast_precision_loss,
@@ -490,6 +541,19 @@ pub fn predict_one_class_probability(prob_density_marks: &[f64], dec_value: f64)
 /// # Panics
 ///
 /// Panics if row lengths differ, mark arithmetic overflows, or prediction rejects the model.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter { svm_type: SvmType::OneClass, gamma: 0.5, ..Default::default() };
+/// let model = libsvm_rs::train::svm_train(&problem, &param);
+/// let marks = libsvm_rs::probability::svm_one_class_probability(&problem, &model);
+/// assert!(marks.is_none()); // Four rows cannot supply five positive and five negative decisions.
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn svm_one_class_probability(prob: &SvmProblem, model: &SvmModel) -> Option<Vec<f64>> {
     let marks = try_one_class_probability(prob, model);
@@ -581,6 +645,22 @@ fn try_one_class_probability(
 /// # Panics
 ///
 /// Panics if row lengths differ, rows exceed 2^53, or cross-validation rejects a fold.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter {
+///     svm_type: SvmType::EpsilonSvr,
+///     kernel_type: KernelType::Linear,
+///     ..Default::default()
+/// };
+/// let sigma = libsvm_rs::probability::svm_svr_probability(&problem, &param);
+/// assert!(sigma.is_finite() && sigma >= 0.0);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub fn svm_svr_probability(prob: &SvmProblem, param: &SvmParameter) -> f64 {
     let scale = try_svr_probability(prob, param);
     #[expect(

@@ -84,6 +84,21 @@ fn fill_plain(data: &mut [Qfloat], start: usize, end: usize, i: usize, kernel: &
 /// Takes `&mut self` because `get_q` mutates the internal cache.
 /// The solver owns `Box<dyn QMatrix>` and copies row data into its
 /// own buffers to avoid lifetime issues.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+/// use libsvm_rs::qmatrix::{OneClassQ, QMatrix};
+/// let rows = vec![vec![SvmNode { index: 1, value: 2.0 }],
+///                 vec![SvmNode { index: 1, value: 3.0 }]];
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let mut q = OneClassQ::new(&rows, &param);
+/// let matrix: &mut dyn QMatrix = &mut q;
+/// assert_eq!(matrix.get_q(0, 2).len(), 2);
+/// assert_eq!(matrix.get_qd().len(), 2);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub trait QMatrix {
     /// Get column `i` of the Q matrix, with at least `len` elements.
     ///
@@ -91,9 +106,35 @@ pub trait QMatrix {
     ///
     /// The call panics when `i` is outside the stored column count.
     /// The call panics when `len` is longer than that count.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+    /// use libsvm_rs::qmatrix::{OneClassQ, QMatrix};
+    /// let rows = vec![vec![SvmNode { index: 1, value: 2.0 }],
+    ///                 vec![SvmNode { index: 1, value: 3.0 }]];
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let mut q = OneClassQ::new(&rows, &param);
+    /// assert_eq!(q.get_q(0, 2), &[4.0_f32, 6.0_f32]);
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     fn get_q(&mut self, i: usize, len: usize) -> &[Qfloat];
 
     /// Get the diagonal of Q: `QD[i] = Q[i][i]`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+    /// use libsvm_rs::qmatrix::{OneClassQ, QMatrix};
+    /// let rows = vec![vec![SvmNode { index: 1, value: 2.0 }],
+    ///                 vec![SvmNode { index: 1, value: 3.0 }]];
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let mut q = OneClassQ::new(&rows, &param);
+    /// assert_eq!(q.get_qd(), &[4.0, 9.0]);
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     fn get_qd(&self) -> &[f64];
 
     /// Swap indices i and j in all internal data structures.
@@ -101,6 +142,20 @@ pub trait QMatrix {
     /// # Panics
     ///
     /// The call panics when `i` or `j` is outside the stored column count.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+    /// use libsvm_rs::qmatrix::{OneClassQ, QMatrix};
+    /// let rows = vec![vec![SvmNode { index: 1, value: 2.0 }],
+    ///                 vec![SvmNode { index: 1, value: 3.0 }]];
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let mut q = OneClassQ::new(&rows, &param);
+    /// q.swap_index(0, 1);
+    /// assert_eq!(q.get_qd(), &[9.0, 4.0]);
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     fn swap_index(&mut self, i: usize, j: usize);
 }
 
@@ -109,6 +164,19 @@ pub trait QMatrix {
 /// Q matrix for C-SVC and ν-SVC classification.
 ///
 /// `Q[i][j] = y[i] * y[j] * K(x[i], x[j])` stored as `Qfloat` (f32).
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+/// use libsvm_rs::qmatrix::{SvcQ, QMatrix};
+/// let rows = vec![vec![SvmNode { index: 1, value: 2.0 }],
+///                 vec![SvmNode { index: 1, value: 3.0 }]];
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let mut q = SvcQ::new(&rows, &param, &[-1, 1]);
+/// assert_eq!(q.get_q(0, 2), &[4.0_f32, -6.0_f32]);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub struct SvcQ<'a> {
     kernel: Kernel<'a>,
     cache: Cache,
@@ -118,6 +186,19 @@ pub struct SvcQ<'a> {
 
 impl<'a> SvcQ<'a> {
     /// Build the classification Q matrix used by LIBSVM's `SVC_Q` helper.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+    /// use libsvm_rs::qmatrix::{SvcQ, QMatrix};
+    /// let rows = vec![vec![SvmNode { index: 1, value: 2.0 }],
+    ///                 vec![SvmNode { index: 1, value: 3.0 }]];
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let mut q = SvcQ::new(&rows, &param, &[-1, 1]);
+    /// assert_eq!(q.get_q(0, 2), &[4.0_f32, -6.0_f32]);
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[must_use]
     #[expect(
         clippy::cast_possible_truncation,
@@ -188,6 +269,19 @@ impl QMatrix for SvcQ<'_> {
 /// Q matrix for one-class SVM.
 ///
 /// `Q[i][j] = K(x[i], x[j])` — no label scaling.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+/// use libsvm_rs::qmatrix::{OneClassQ, QMatrix};
+/// let rows = vec![vec![SvmNode { index: 1, value: 2.0 }],
+///                 vec![SvmNode { index: 1, value: 3.0 }]];
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let mut q = OneClassQ::new(&rows, &param);
+/// assert_eq!(q.get_q(0, 2), &[4.0_f32, 6.0_f32]);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub struct OneClassQ<'a> {
     kernel: Kernel<'a>,
     cache: Cache,
@@ -196,6 +290,19 @@ pub struct OneClassQ<'a> {
 
 impl<'a> OneClassQ<'a> {
     /// Build the one-class Q matrix used by LIBSVM's `ONE_CLASS_Q` helper.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+    /// use libsvm_rs::qmatrix::{OneClassQ, QMatrix};
+    /// let rows = vec![vec![SvmNode { index: 1, value: 2.0 }],
+    ///                 vec![SvmNode { index: 1, value: 3.0 }]];
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let mut q = OneClassQ::new(&rows, &param);
+    /// assert_eq!(q.get_q(0, 2), &[4.0_f32, 6.0_f32]);
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[must_use]
     #[expect(
         clippy::cast_possible_truncation,
@@ -257,6 +364,20 @@ impl QMatrix for OneClassQ<'_> {
 /// The regression dual has 2l variables (`α_i`^+ and `α_i`^-).
 /// The underlying kernel cache stores only l rows of actual kernel
 /// evaluations; `get_q` reorders/signs them into a double-buffered output.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+/// use libsvm_rs::qmatrix::{SvrQ, QMatrix};
+/// let rows = vec![vec![SvmNode { index: 1, value: 2.0 }],
+///                 vec![SvmNode { index: 1, value: 3.0 }]];
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let mut q = SvrQ::new(&rows, &param);
+/// assert_eq!(q.get_q(0, 2), &[4.0_f32, 6.0_f32]);
+/// assert_eq!(q.get_qd().len(), 4); // Two dual variables per input row.
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 pub struct SvrQ<'a> {
     kernel: Kernel<'a>,
     cache: Cache,
@@ -276,6 +397,20 @@ pub struct SvrQ<'a> {
 
 impl<'a> SvrQ<'a> {
     /// Build the regression Q matrix used by LIBSVM's `SVR_Q` helper.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::{KernelType, SvmNode, SvmParameter};
+    /// use libsvm_rs::qmatrix::{SvrQ, QMatrix};
+    /// let rows = vec![vec![SvmNode { index: 1, value: 2.0 }],
+    ///                 vec![SvmNode { index: 1, value: 3.0 }]];
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let mut q = SvrQ::new(&rows, &param);
+    /// assert_eq!(q.get_q(0, 2), &[4.0_f32, 6.0_f32]);
+    /// assert_eq!(q.get_qd().len(), 4); // Two dual variables per input row.
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[must_use]
     #[expect(
         clippy::cast_possible_truncation,

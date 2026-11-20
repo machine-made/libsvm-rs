@@ -228,6 +228,15 @@ pub(crate) fn shuffle_range(index: &mut [usize], start: usize, len: usize) -> Op
 /// # Errors
 ///
 /// Returns an error string when the index is not an integer in range.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::util::parse_feature_index;
+/// assert_eq!(parse_feature_index("2", 10)?, 2);
+/// assert!(parse_feature_index("11", 10).is_err());
+/// Ok::<(), String>(())
+/// ```
 pub fn parse_feature_index(idx_str: &str, max_feature_index: i32) -> Result<i32, String> {
     let index = idx_str
         .parse::<i32>()

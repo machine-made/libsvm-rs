@@ -19,6 +19,15 @@
 ///
 /// Matches the integer constants in the original LIBSVM (`svm.h`):
 /// `C_SVC=0, NU_SVC=1, ONE_CLASS=2, EPSILON_SVR=3, NU_SVR=4`.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::SvmType;
+/// let formulation = SvmType::EpsilonSvr;
+/// assert_eq!(formulation as i32, 3);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(i32)]
 pub enum SvmType {
@@ -38,6 +47,15 @@ pub enum SvmType {
 ///
 /// Matches the integer constants in the original LIBSVM (`svm.h`):
 /// `LINEAR=0, POLY=1, RBF=2, SIGMOID=3, PRECOMPUTED=4`.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::KernelType;
+/// let kernel = KernelType::Rbf;
+/// assert_eq!(kernel as i32, 2);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(i32)]
 pub enum KernelType {
@@ -58,6 +76,16 @@ pub enum KernelType {
 /// In the original LIBSVM, a sentinel node with `index = -1` marks the end
 /// of each instance. In this Rust port, instance length is tracked by
 /// `Vec::len()` instead, so no sentinel is needed.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::SvmNode;
+/// let node = SvmNode { index: 1, value: 0.5 };
+/// assert_eq!(node.index, 1);
+/// assert_eq!(node.value.to_bits(), 0.5_f64.to_bits());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SvmNode {
@@ -74,6 +102,19 @@ pub struct SvmNode {
 /// within the configured [`crate::io::LoadOptions`] bounds. When constructing a
 /// problem manually, keep `labels.len() == instances.len()` and use ascending
 /// feature indices to match LIBSVM input assumptions.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::{SvmNode, SvmProblem};
+/// let problem = SvmProblem {
+///     labels: vec![-1.0, 1.0],
+///     instances: vec![vec![SvmNode { index: 1, value: -1.0 }],
+///                     vec![SvmNode { index: 1, value: 1.0 }]],
+/// };
+/// assert_eq!(problem.labels.len(), problem.instances.len());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct SvmProblem {
     /// Label (class for classification, target for regression) per instance.
@@ -85,6 +126,15 @@ pub struct SvmProblem {
 /// SVM parameters controlling the formulation, kernel, and solver.
 ///
 /// Default values match the original LIBSVM defaults.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::{KernelType, SvmParameter};
+/// let param = SvmParameter { kernel_type: KernelType::Linear, c: 2.0, ..Default::default() };
+/// param.validate()?;
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SvmParameter {
@@ -148,6 +198,16 @@ impl SvmParameter {
     ///
     /// Returns [`crate::error::SvmError::InvalidParameter`] when a parameter
     /// is outside the accepted range.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::SvmParameter;
+    /// SvmParameter::default().validate()?;
+    /// let invalid = SvmParameter { eps: 0.0, ..Default::default() };
+    /// assert!(invalid.validate().is_err());
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     pub fn validate(&self) -> Result<(), crate::error::SvmError> {
         use crate::error::SvmError;
 
@@ -235,6 +295,17 @@ pub(crate) fn check_sample_serial(first: &SvmNode, upper: usize) -> Result<(), S
 ///
 /// Returns [`crate::error::SvmError::InvalidParameter`] when the problem and
 /// parameters do not match.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// libsvm_rs::check_parameter(&problem, &param)?;
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[expect(
     clippy::cast_possible_truncation,
     reason = "C truncates the same values at these points"
@@ -338,6 +409,19 @@ pub fn check_parameter(
 /// consistent. Manually constructed values bypass those checks, so callers that
 /// accept external model text should prefer [`crate::io::load_model`] or
 /// [`crate::io::load_model_from_reader`].
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let model = libsvm_rs::train::svm_train(&problem, &param);
+/// assert_eq!(model.nr_class, 2);
+/// assert_eq!(model.n_sv.iter().sum::<usize>(), model.sv.len());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SvmModel {
@@ -473,36 +557,115 @@ impl<'de> serde::Deserialize<'de> for SvmModel {
 
 impl SvmModel {
     /// Return the SVM type used by the model.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::io::load_problem_from_reader;
+    /// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+    /// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let model = libsvm_rs::train::svm_train(&problem, &param);
+    /// assert_eq!(model.svm_type(), SvmType::CSvc);
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[must_use]
     pub fn svm_type(&self) -> SvmType {
         self.param.svm_type
     }
 
     /// Return number of classes.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::io::load_problem_from_reader;
+    /// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+    /// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let model = libsvm_rs::train::svm_train(&problem, &param);
+    /// assert_eq!(model.class_count(), 2);
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[must_use]
     pub fn class_count(&self) -> usize {
         self.nr_class
     }
 
     /// Return class labels in internal one-vs-one order.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::io::load_problem_from_reader;
+    /// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+    /// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let model = libsvm_rs::train::svm_train(&problem, &param);
+    /// assert_eq!(model.labels(), &[1, -1]);
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[must_use]
     pub fn labels(&self) -> &[i32] {
         &self.label
     }
 
     /// Return original 1-based support-vector indices.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::io::load_problem_from_reader;
+    /// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+    /// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let model = libsvm_rs::train::svm_train(&problem, &param);
+    /// assert!(model.support_vector_indices().iter().all(|i| (1..=problem.labels.len()).contains(i)));
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[must_use]
     pub fn support_vector_indices(&self) -> &[usize] {
         &self.sv_indices
     }
 
     /// Return total number of support vectors.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::io::load_problem_from_reader;
+    /// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+    /// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let model = libsvm_rs::train::svm_train(&problem, &param);
+    /// assert_eq!(model.support_vector_count(), model.sv.len());
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[must_use]
     pub fn support_vector_count(&self) -> usize {
         self.sv.len()
     }
 
     /// Return SVR sigma when a probability-capable SVR model is available.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::io::load_problem_from_reader;
+    /// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+    /// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+    /// let param = SvmParameter {
+    ///     svm_type: SvmType::EpsilonSvr,
+    ///     kernel_type: KernelType::Linear,
+    ///     probability: true,
+    ///     ..Default::default()
+    /// };
+    /// let model = libsvm_rs::train::svm_train(&problem, &param);
+    /// let sigma = model.svr_probability()
+    ///     .ok_or(libsvm_rs::SvmError::InvalidParameter("missing SVR scale".into()))?;
+    /// assert!(sigma.is_finite() && sigma >= 0.0);
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[must_use]
     pub fn svr_probability(&self) -> Option<f64> {
         match self.param.svm_type {
@@ -512,6 +675,18 @@ impl SvmModel {
     }
 
     /// Check whether the model contains probability metadata.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libsvm_rs::io::load_problem_from_reader;
+    /// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+    /// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+    /// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+    /// let model = libsvm_rs::train::svm_train(&problem, &param);
+    /// assert!(!model.has_probability_model());
+    /// Ok::<(), libsvm_rs::SvmError>(())
+    /// ```
     #[must_use]
     pub fn has_probability_model(&self) -> bool {
         match self.param.svm_type {
@@ -523,42 +698,133 @@ impl SvmModel {
 }
 
 /// C-API style helper matching LIBSVM's `svm_get_svm_type`.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let model = libsvm_rs::train::svm_train(&problem, &param);
+/// assert_eq!(libsvm_rs::svm_get_svm_type(&model), SvmType::CSvc);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn svm_get_svm_type(model: &SvmModel) -> SvmType {
     model.svm_type()
 }
 
 /// C-API style helper matching LIBSVM's `svm_get_nr_class`.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let model = libsvm_rs::train::svm_train(&problem, &param);
+/// assert_eq!(libsvm_rs::svm_get_nr_class(&model), 2);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn svm_get_nr_class(model: &SvmModel) -> usize {
     model.class_count()
 }
 
 /// C-API style helper matching LIBSVM's `svm_get_labels`.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let model = libsvm_rs::train::svm_train(&problem, &param);
+/// assert_eq!(libsvm_rs::svm_get_labels(&model), &[1, -1]);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn svm_get_labels(model: &SvmModel) -> &[i32] {
     model.labels()
 }
 
 /// C-API style helper matching LIBSVM's `svm_get_sv_indices`.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let model = libsvm_rs::train::svm_train(&problem, &param);
+/// assert_eq!(libsvm_rs::svm_get_sv_indices(&model), model.support_vector_indices());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn svm_get_sv_indices(model: &SvmModel) -> &[usize] {
     model.support_vector_indices()
 }
 
 /// C-API style helper matching LIBSVM's `svm_get_nr_sv`.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let model = libsvm_rs::train::svm_train(&problem, &param);
+/// assert_eq!(libsvm_rs::svm_get_nr_sv(&model), model.sv.len());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn svm_get_nr_sv(model: &SvmModel) -> usize {
     model.support_vector_count()
 }
 
 /// C-API style helper matching LIBSVM's `svm_get_svr_probability`.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter {
+///     svm_type: SvmType::EpsilonSvr,
+///     kernel_type: KernelType::Linear,
+///     probability: true,
+///     ..Default::default()
+/// };
+/// let model = libsvm_rs::train::svm_train(&problem, &param);
+/// let sigma = libsvm_rs::svm_get_svr_probability(&model)
+///     .ok_or(libsvm_rs::SvmError::InvalidParameter("missing SVR scale".into()))?;
+/// assert!(sigma.is_finite() && sigma >= 0.0);
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn svm_get_svr_probability(model: &SvmModel) -> Option<f64> {
     model.svr_probability()
 }
 
 /// C-API style helper matching LIBSVM's `svm_check_probability_model`.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::io::load_problem_from_reader;
+/// use libsvm_rs::{KernelType, SvmParameter, SvmType};
+/// let problem = load_problem_from_reader(&b"-1 1:-2\n-1 1:-1\n1 1:1\n1 1:2\n"[..])?;
+/// let param = SvmParameter { kernel_type: KernelType::Linear, ..Default::default() };
+/// let model = libsvm_rs::train::svm_train(&problem, &param);
+/// assert!(!libsvm_rs::svm_check_probability_model(&model));
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 pub fn svm_check_probability_model(model: &SvmModel) -> bool {
     model.has_probability_model()

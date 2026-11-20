@@ -1,6 +1,16 @@
 //! Lightweight scoring helpers for CLI outputs and test checks.
 
 /// Compute mean squared error and squared correlation coefficient.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::regression_metrics;
+/// let (mse, correlation) = regression_metrics(&[1.0, 2.0], &[1.0, 2.0]);
+/// assert_eq!(mse.to_bits(), 0.0_f64.to_bits());
+/// assert_eq!(correlation.to_bits(), 1.0_f64.to_bits());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 #[expect(
     clippy::cast_precision_loss,
@@ -47,6 +57,15 @@ pub fn regression_metrics(predictions: &[f64], labels: &[f64]) -> (f64, f64) {
 }
 
 /// Compute classification accuracy in `[0, 100]` as percent.
+///
+/// # Example
+///
+/// ```
+/// use libsvm_rs::accuracy_percentage;
+/// let accuracy = accuracy_percentage(&[1.0, -1.0], &[1.0, 1.0]);
+/// assert_eq!(accuracy.to_bits(), 50.0_f64.to_bits());
+/// Ok::<(), libsvm_rs::SvmError>(())
+/// ```
 #[must_use]
 #[expect(
     clippy::cast_precision_loss,
