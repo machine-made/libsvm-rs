@@ -131,6 +131,11 @@ jobs:
           head -20 reference/reference_build.log || true
           readelf -p .comment $C | head -6 || true
           echo "fma instructions in C binary: $(objdump -d $C | grep -c -E 'vfmadd|vfnmadd|vfmsub')"
+          g++ -Q --help=target | grep -E '^\s+-march=|^\s+-mfma\s|^\s+-mtune=|^\s+-mavx2\s' || true
+          which -a g++ gcc; ls -la "$(which g++)"
+          g++ -v 2>&1 | grep -E 'Configured with|specs' | cut -c1-400
+          objdump -d $C | grep -m3 -E 'vfmadd' || true
+          echo "fma in a plain compile: $(printf 'double f(double a,double b,double c){return a*b+c;}' | g++ -O3 -x c++ -S -o - - | grep -c vfmadd)"
           echo "--- variants"
           echo -n "env -i: "; env -i $C -q -s 0 -t 0 -v 3 data/single_member.scale
           echo -n "LD_BIND_NOW: "; LD_BIND_NOW=1 $C -q -s 0 -t 0 -v 3 data/single_member.scale
