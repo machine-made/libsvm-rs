@@ -17,16 +17,8 @@ env:
 
 jobs:
   Kani:
-    name: Kani (${{ matrix.harness }})
+    name: Kani
     runs-on: ubuntu-latest
-    timeout-minutes: 12
-    strategy:
-      fail-fast: false
-      matrix:
-        harness:
-          - prove_element_budget_saturates
-          - prove_lru_insert_delete_is_circular
-          - prove_get_data_covers_request
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,4 +27,4 @@ jobs:
         with:
           kani-version: "0.68.0"
           command: cargo-kani
-          args: --output-format=terse --harness ${{ matrix.harness }}
+          args: --output-format=terse
