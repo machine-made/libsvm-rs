@@ -8,20 +8,14 @@ These targets exercise the text loaders with arbitrary bytes:
 The pinned fuzz toolchain is recorded at the repository root in
 `rust-toolchain-fuzz.toml`.
 
-## Local Quick Check
+## Heavy checks
 
-```sh
-cargo install cargo-fuzz --locked
-cd crates/libsvm
-cargo +nightly-2026-03-08 fuzz run parse_problem -- -max_total_time=60
-cargo +nightly-2026-03-08 fuzz run parse_model -- -max_total_time=60
-```
+Run `bash scripts/heavy_x3.sh fuzz` from the repository root on x3 to replay both saved corpora and fuzz each parser.
+Set `FUZZ_SECONDS` to change the default 300 seconds; the script removes its nightly and cargo-fuzz even after failures.
+Run `bash scripts/heavy_x3.sh bench` from the repository root on x3 to measure Rust against C.
+Both commands save logs under `heavy-logs/`; add `--dry-run` to preview the commands.
 
-Before tagging a security release, run each target for at least 15 minutes:
-
-```sh
-cargo +nightly-2026-03-08 fuzz run parse_problem -- -max_total_time=900
-cargo +nightly-2026-03-08 fuzz run parse_model -- -max_total_time=900
-```
-
-Crash artifacts are written under `fuzz/artifacts/<target>/`.
+Fuzzing runs only when someone starts it.
+The Kani job runs on pull requests that change `crates/libsvm/src`.
+Crash files are copied from `crates/libsvm/fuzz/artifacts/` into `heavy-logs/`.
+Before tagging a security release, set `FUZZ_SECONDS=900` to fuzz each parser for at least 15 minutes.

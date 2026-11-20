@@ -42,3 +42,4 @@ examples/integrations/wasm_inference/output/*
 # Local links to the project's planning folder; never committed
 /.jac
 /AGENTS.md
+heavy-logs/

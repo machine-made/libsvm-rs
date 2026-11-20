@@ -516,3 +516,109 @@ mod tests {
         assert_eq!(start, 0);
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::{Cache, LruNode, NONE, Qfloat};
+
+    // Arbitrary row counts cannot be allocated in a bounded proof.
+    // Keep this expression identical to Cache::new and check it against wider arithmetic.
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn prove_element_budget_saturates() {
+        let l: usize = kani::any();
+        let size_bytes: usize = kani::any();
+        let qfloat_bytes = std::mem::size_of::<Qfloat>();
+        let node_bytes = std::mem::size_of::<LruNode>();
+        let header_size = l.saturating_mul(node_bytes) / qfloat_bytes;
+        let floor = l.saturating_mul(2).saturating_add(header_size);
+        let size = (size_bytes / qfloat_bytes)
+            .max(floor)
+            .saturating_sub(header_size);
+
+        let cap = usize::MAX as u128;
+        let wide_header = ((l as u128) * (node_bytes as u128)).min(cap) / (qfloat_bytes as u128);
+        let wide_floor = ((l as u128) * 2 + wide_header).min(cap);
+        let wide_budget =
+            ((size_bytes as u128) / (qfloat_bytes as u128)).max(wide_floor) - wide_header;
+        assert_eq!(size as u128, wide_budget);
+        assert!(size.checked_add(header_size).is_some());
+
+        // Link the arithmetic proof to the constructor for small allocations.
+        let small_l: usize = kani::any();
+        kani::assume(small_l <= 3);
+        let cache = Cache::new(small_l, size_bytes);
+        let small_header = small_l * node_bytes / qfloat_bytes;
+        assert_eq!(
+            cache.size,
+            (size_bytes / qfloat_bytes).max(small_l * 2 + small_header) - small_header
+        );
+    }
+
+    fn assert_circular(cache: &Cache) {
+        let mut listed = 0;
+        for (i, node) in cache.nodes.iter().enumerate() {
+            if node.prev == NONE {
+                assert!(i < cache.l);
+                assert_eq!(node.next, NONE);
+            } else {
+                assert!(node.prev <= cache.l);
+                assert!(node.next <= cache.l);
+                assert_eq!(cache.nodes[node.prev].next, i);
+                assert_eq!(cache.nodes[node.next].prev, i);
+                if i != cache.l {
+                    listed += 1;
+                }
+            }
+        }
+        // Every listed row belongs to the sentinel's circle.
+        let mut cursor = cache.nodes[cache.l].next;
+        for _ in 0..listed {
+            assert!(cursor < cache.l);
+            cursor = cache.nodes[cursor].next;
+        }
+        assert_eq!(cursor, cache.l);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn prove_lru_insert_delete_is_circular() {
+        let l: usize = kani::any();
+        let index: usize = kani::any();
+        let members: u8 = kani::any();
+        kani::assume(l > 0 && l <= 3);
+        kani::assume(index < l);
+        kani::assume(members <= 7);
+        let mut cache = Cache::new(l, 0);
+        for i in 0..l {
+            if i != index && members & (1 << i) != 0 {
+                cache.lru_insert(i);
+            }
+        }
+        assert_circular(&cache);
+        cache.lru_insert(index);
+        assert_circular(&cache);
+        cache.lru_delete(index);
+        assert_circular(&cache);
+        assert!(!cache.in_lru(index));
+    }
+
+    #[kani::proof]
+    #[kani::unwind(12)]
+    fn prove_get_data_covers_request() {
+        let l: usize = kani::any();
+        let index: usize = kani::any();
+        let request_len: usize = kani::any();
+        kani::assume(l > 0 && l <= 3);
+        kani::assume(index < l);
+        kani::assume(request_len <= 4);
+        let mut cache = Cache::new(l, 0);
+        assert!(cache.get_data(index, request_len).0.len() >= request_len);
+        // Fill competing rows to cover eviction and reuse, then grow the request.
+        for i in 0..l {
+            assert!(cache.get_data(i, 4).0.len() >= 4);
+        }
+        assert!(cache.get_data(index, request_len).0.len() >= request_len);
+        assert!(cache.get_data(index, 4).0.len() >= 4);
+    }
+}

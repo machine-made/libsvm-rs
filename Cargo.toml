@@ -27,6 +27,7 @@ lto = "fat"
 codegen-units = 1
 
 [workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 unsafe_code = "deny"
 missing_docs = "deny"
 

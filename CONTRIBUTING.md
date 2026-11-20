@@ -33,6 +33,14 @@ bash scripts/compare_references.sh
 
 Run quick parity with `DIFF_SCOPE=quick PARITY_REPORT=.tmp/parity_quick.json bash scripts/parity_ulp.sh`; the full run of every case is the command listed below.
 
+## Heavy checks
+
+Run `bash scripts/heavy_x3.sh fuzz` on x3 to check both parsers for 300 seconds each.
+Fuzzing runs only when someone starts it; the script removes its nightly and cargo-fuzz even after failures.
+Run `bash scripts/heavy_x3.sh bench` on x3 to measure Rust against C.
+Both commands save logs under `heavy-logs/`; add `--dry-run` to preview the commands.
+The Kani job runs on pull requests that change `crates/libsvm/src`.
+
 ## Port code
 
 This project is a Rust port of LIBSVM. Before you add or change port code:
