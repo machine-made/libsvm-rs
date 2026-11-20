@@ -126,6 +126,18 @@ jobs:
           for i in 1 2 3; do $C -q -s 0 -t 0 -v 3 data/single_member.scale; done
           for i in 1 2 3; do target/release/svm-train-rs -q -s 0 -t 0 -v 3 data/single_member.scale; done
           grep -n 'CFLAGS' .tmp/reference_upstream/libsvm/Makefile | head -3
+          echo "--- variants"
+          echo -n "env -i: "; env -i $C -q -s 0 -t 0 -v 3 data/single_member.scale
+          echo -n "LD_BIND_NOW: "; LD_BIND_NOW=1 $C -q -s 0 -t 0 -v 3 data/single_member.scale
+          echo -n "no ASLR: "; setarch x86_64 -R $C -q -s 0 -t 0 -v 3 data/single_member.scale
+          echo -n "perturb: "; MALLOC_PERTURB_=85 $C -q -s 0 -t 0 -v 3 data/single_member.scale
+          echo -n "hwcaps off: "; GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX512F,-AVX512VL,-AVX512BW,-AVX512DQ,-AVX512CD,-AVX2,-FMA,-BMI2 $C -q -s 0 -t 0 -v 3 data/single_member.scale
+          echo -n "taskset: "; taskset -c 0 $C -q -s 0 -t 0 -v 3 data/single_member.scale
+          python3 - <<'PY'
+          import math
+          for f, a in ((math.exp, 1.0), (math.exp, -0.37), (math.log, 2.0), (math.log, 0.37), (math.tanh, 0.5), (math.sqrt, 2.0)):
+              print(f.__name__, a, float.hex(f(a)))
+          PY
           file $C || true
       - name: Upload parity report
         if: failure()
