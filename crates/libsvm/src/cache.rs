@@ -606,13 +606,13 @@ mod kani_proofs {
     #[kani::proof]
     #[kani::unwind(8)]
     fn prove_get_data_covers_request() {
-        // The request length is fixed at 3: a symbolic length through Vec::resize
-        // did not finish within five minutes. The two rows are symbolic, so the
-        // proof covers growth from empty, reuse of the same row and eviction.
-        let l: usize = kani::any();
+        // The row count and the request length are fixed (2 and 3): symbolic
+        // sizes through vec! and Vec::resize did not finish within five minutes.
+        // The two rows are symbolic, so the proof covers growth from empty,
+        // reuse of the same row and eviction.
+        let l = 2;
         let first: usize = kani::any();
         let second: usize = kani::any();
-        kani::assume(l > 0 && l <= 2);
         kani::assume(first < l && second < l);
         let mut cache = Cache::new(l, 0);
         assert!(cache.get_data(first, 3).0.len() >= 3);
